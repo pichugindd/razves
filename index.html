@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Развес CAD 208</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fira+Sans+Condensed:wght@500;600;700&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: инженерный лист — слева пульт ввода, справа разрез зала, под ним массив крупно и таблица колонок */
+:root {
+  --bg: #eceeea;
+  --panel: #f7f8f5;
+  --ink: #171a18;
+  --muted: #5d6560;
+  --line: #c9cec8;
+  --grid: #dfe3dd;
+  --accent: #c8501a;
+  --accent-ink: #ffffff;
+  --cabinet: #23272a;
+  --cabinet-edge: #4a5054;
+  --on-cabinet: #eef1ec;
+  --audience: #6b4fa8;
+  --ray-a: #1f5aa6;
+  --ray-b: #d9761c;
+  --ok: #2c7a50;
+  --warn: #a8700f;
+  --bad: #b8362a;
+  --f-display: "Fira Sans Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "Golos Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-data: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121514; --panel: #1a1e1c; --ink: #e5e9e4; --muted: #949d97; --line: #323935; --grid: #232926;
+    --accent: #f07a3c; --accent-ink: #1a1e1c; --cabinet: #0b0d0c; --cabinet-edge: #8b938e; --audience: #a78bfa;
+    --ray-a: #5b9be8; --ray-b: #f3a04a; --ok: #4cc38a; --warn: #f0b44c; --bad: #ff6b5e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121514; --panel: #1a1e1c; --ink: #e5e9e4; --muted: #949d97; --line: #323935; --grid: #232926;
+  --accent: #f07a3c; --accent-ink: #1a1e1c; --cabinet: #0b0d0c; --cabinet-edge: #8b938e; --audience: #a78bfa;
+  --ray-a: #5b9be8; --ray-b: #f3a04a; --ok: #4cc38a; --warn: #f0b44c; --bad: #ff6b5e;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 14px/1.45 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px 32px;
+}
+.wrap { max-width: 1440px; margin: 0 auto; display: grid; gap: 16px; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+header.top h1 {
+  margin: 0; font: 700 26px/1.1 var(--f-display); letter-spacing: .01em; text-wrap: balance;
+}
+header.top .sub { color: var(--muted); font-size: 13px; }
+
+.layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+
+/* пульт ввода */
+.controls { padding: 14px; display: grid; gap: 18px; }
+.group { display: grid; gap: 10px; }
+.group h2, .card h2 {
+  margin: 0; font: 600 12px/1 var(--f-display); text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+}
+.field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; }
+.field label { font-size: 13px; }
+.field .hint { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+.field input[type="number"], .field select {
+  width: 104px; font: 500 14px var(--f-data); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; text-align: right;
+}
+.field select { text-align: left; width: 168px; font-family: var(--f-body); }
+.stepper { display: flex; gap: 4px; }
+.stepper input { width: 64px !important; text-align: center !important; }
+button {
+  font: 600 13px var(--f-display); letter-spacing: .03em; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; cursor: pointer;
+}
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.stepper button { width: 32px; padding: 6px 0; font-family: var(--f-data); }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.auto { display: grid; gap: 8px; padding-top: 4px; }
+.auto button.primary { padding: 9px 12px; font-size: 14px; }
+.auto .hint { color: var(--muted); font-size: 12px; }
+.auto-result { display: grid; gap: 6px; font-size: 13px; padding: 8px 10px; border-radius: 4px; background: color-mix(in oklab, var(--ok) 10%, transparent); }
+.auto-result button { justify-self: start; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* результаты */
+.results { display: grid; gap: 16px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: grid; gap: 2px; padding: 8px 12px; border-radius: var(--r); background: var(--panel);
+  border: 1px solid var(--line); border-left-width: 4px; min-width: 128px;
+}
+.chip .k { font: 600 11px/1 var(--f-display); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.chip .v { font: 500 17px/1.2 var(--f-data); font-variant-numeric: tabular-nums; }
+.chip.ok { border-left-color: var(--ok); }
+.chip.warn { border-left-color: var(--warn); }
+.chip.bad { border-left-color: var(--bad); }
+
+.card { padding: 12px 14px 14px; display: grid; gap: 10px; min-width: 0; }
+.card .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
+.card .note { color: var(--muted); font-size: 12px; }
+.view { width: 100%; overflow-x: auto; }
+.view svg { display: block; width: 100%; height: auto; margin: 0 auto; }
+
+.lower { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .lower { grid-template-columns: minmax(0, 1fr); } }
+
+/* таблица колонок */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font: 600 11px/1.2 var(--f-display); text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+td { font: 400 13px var(--f-data); }
+th:first-child, td:first-child { text-align: left; }
+td.where { font-family: var(--f-body); text-align: left; }
+td select { font: 500 13px var(--f-data); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 3px 4px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+tr.hl td { background: color-mix(in oklab, var(--accent) 10%, transparent); }
+.tag { font: 600 11px var(--f-display); letter-spacing: .04em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; }
+.tag.ok { color: var(--ok); background: color-mix(in oklab, var(--ok) 14%, transparent); }
+.tag.warn { color: var(--warn); background: color-mix(in oklab, var(--warn) 16%, transparent); }
+.tag.bad { color: var(--bad); background: color-mix(in oklab, var(--bad) 14%, transparent); }
+
+/* чертёж */
+svg .g { stroke: var(--grid); stroke-width: 1; }
+svg .g.gm { stroke: var(--line); }
+svg .ax { fill: var(--muted); font: 11px var(--f-data); }
+svg .lbl { fill: var(--muted); font: 12px var(--f-body); }
+svg .room { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+svg .aud { stroke: var(--audience); stroke-width: 4; stroke-linecap: round; }
+svg .aud-fill { fill: var(--audience); opacity: .08; }
+svg .frame { fill: var(--accent); stroke: var(--accent); stroke-width: 1; }
+svg .box { fill: var(--cabinet); stroke: var(--cabinet-edge); stroke-width: .75; }
+svg .cone { opacity: .13; }
+svg .ray { stroke-width: 1.6; }
+svg .hit { stroke: var(--panel); stroke-width: 1.5; }
+svg .num { fill: var(--on-cabinet); font: 600 12px var(--f-data); }
+svg .ang { fill: var(--ink); font: 500 11px var(--f-data); }
+svg .cov0, .legend .cov0 { fill: var(--bad); background: var(--bad); }
+svg .cov1, .legend .cov1 { fill: var(--ok); background: var(--ok); opacity: .55; }
+svg .cov2, .legend .cov2 { fill: var(--ok); background: var(--ok); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); font-size: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 18px; height: 7px; border-radius: 2px; }
+svg .lvl { fill: none; stroke: var(--audience); stroke-width: 2; stroke-linejoin: round; }
+svg .lvl-fill { fill: var(--audience); opacity: .1; }
+svg .lvl-mean { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .dim { opacity: .12; }
+svg .cone.dim { opacity: .03; }
+svg [data-i] { cursor: pointer; transition: opacity .15s; }
+tbody tr { cursor: pointer; }
+
+footer.notes { color: var(--muted); font-size: 12px; max-width: 80ch; display: grid; gap: 6px; }
+footer.notes p { margin: 0; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Развес CAD 208</h1>
+    <span class="sub">HK Audio CADIS · вид сбоку · одна сторона</span>
+  </header>
+
+  <div class="layout">
+    <aside class="panel controls" id="controls"></aside>
+    <main class="results" id="results"></main>
+  </div>
+
+  <footer class="notes" id="notes"></footer>
+</div>
+
+<script>
+// ---------- библиотека колонок ----------
+// Геометрия CAD 208 снята с чертежа HK Audio (DXF): фронт 238,2 мм, глубина 366,6 мм,
+// верх и низ скошены по 7,5°. profile = [расстояние от фронта назад, полувысота], метры.
+const MODELS = {
+  cad208: {
+    label: 'HK Audio CAD 208',
+    h: 0.2382,
+    profile: [[0, 0.1191], [0.0295, 0.1165], [0.3650, 0.0724], [0.3666, 0.0624]],
+    vDisp: 15,
+    hDisp: 100,
+    weight: 17.5,
+    splays: [0, 1.5, 3, 4.5, 6, 7.5, 9, 10.5, 12, 13.5, 15],
+    frameSplays: [0, 1.5, 3, 4.5, 6, 7.5],
+    maxBoxes: 24,
+    frame: { label: 'CADIS Rigging Frame', weight: 11.5, maxLoad: 400, maxBoxes: 20, len: 0.45, thick: 0.05 },
+  },
+};
+
+const EXAMPLE = {
+  model: 'cad208', n: 8, topH: 7, frameTilt: 3,
+  angles: [6, 1.5, 1.5, 3, 3, 4.5, 6, 6],
+  roomL: 32, roomH: 12, audStart: 5, audEnd: 30, ear: 1.7, rise: 0, cones: true, autoTilt: true,
+};
+const STORE_KEY = 'razves.v1';
+
+// ---------- состояние ----------
+function loadState() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { saved = null; }
+  const st = { ...EXAMPLE, angles: [...EXAMPLE.angles] };
+  if (saved && typeof saved === 'object') {
+    for (const k of Object.keys(EXAMPLE)) if (k in saved && typeof saved[k] === typeof EXAMPLE[k]) st[k] = saved[k];
+    if (!MODELS[st.model]) st.model = EXAMPLE.model;
+  }
+  fitAngles(st);
+  return st;
+}
+function saveState() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* хранилище недоступно — работаем без него */ }
+}
+function fitAngles(st) {
+  const m = MODELS[st.model];
+  st.n = Math.max(1, Math.min(m.maxBoxes, Math.round(st.n) || 1));
+  const a = Array.isArray(st.angles) ? st.angles.slice(0, st.n) : [];
+  while (a.length < st.n) a.push(0);
+  st.angles = a.map((v, i) => snap(+v || 0, i === 0 ? m.frameSplays : m.splays));
+}
+function snap(v, list) {
+  return list.reduce((best, x) => Math.abs(x - v) < Math.abs(best - v) ? x : best, list[0]);
+}
+let state = loadState();
+
+// ---------- геометрия ----------
+// Система координат: x — вперёд от передней грани массива к публике, y — вверх от пола. Углы: + вниз.
+const rad = d => d * Math.PI / 180;
+const deg = r => r * 180 / Math.PI;
+
+function computeArray(st) {
+  const m = MODELS[st.model];
+  const half = m.profile[0][1];
+  const boxes = [];
+  let top = { x: 0, y: st.topH };
+  let phi = st.frameTilt;
+  for (let i = 0; i < st.n; i++) {
+    phi += st.angles[i];
+    const r = rad(phi);
+    const a = { x: Math.cos(r), y: -Math.sin(r) };   // ось колонки
+    const u = { x: Math.sin(r), y: Math.cos(r) };    // «верх» колонки
+    const c = { x: top.x - half * u.x, y: top.y - half * u.y }; // центр передней грани
+    const toW = (d, v) => ({ x: c.x - d * a.x + v * u.x, y: c.y - d * a.y + v * u.y });
+    const poly = [
+      ...m.profile.map(([d, v]) => toW(d, v)),
+      ...m.profile.slice().reverse().map(([d, v]) => toW(d, -v)),
+    ];
+    const bottom = toW(0, -half);
+    boxes.push({ i, phi, a, u, c, top, bottom, poly });
+    top = bottom; // передний шарнир: низ этой колонки = верх следующей
+  }
+  const r0 = rad(st.frameTilt);
+  const fa = { x: Math.cos(r0), y: -Math.sin(r0) }, fu = { x: Math.sin(r0), y: Math.cos(r0) };
+  const F = boxes[0].top, f = m.frame;
+  const frame = [
+    F,
+    { x: F.x - f.len * fa.x, y: F.y - f.len * fa.y },
+    { x: F.x - f.len * fa.x + f.thick * fu.x, y: F.y - f.len * fa.y + f.thick * fu.y },
+    { x: F.x + f.thick * fu.x, y: F.y + f.thick * fu.y },
+  ];
+  const all = boxes.flatMap(b => b.poly).concat(frame);
+  const ys = all.map(p => p.y), xs = all.map(p => p.x);
+  return {
+    boxes, frame,
+    topY: Math.max(...ys), bottomY: Math.min(...boxes.flatMap(b => b.poly).map(p => p.y)),
+    minX: Math.min(...xs), maxX: Math.max(...xs),
+  };
+}
+
+// ---------- лучи ----------
+// Поверхности зала, в которые может упереться луч: публика, пол, задняя стена, потолок
+function surfaces(st) {
+  const L = st.roomL, H = st.roomH;
+  const x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
+  const list = [];
+  if (x2 > x1) list.push({ kind: 'aud', p: { x: x1, y: st.ear }, q: { x: x2, y: st.ear + st.rise } });
+  list.push({ kind: 'floor', p: { x: -50, y: 0 }, q: { x: L, y: 0 } });
+  list.push({ kind: 'wall', p: { x: L, y: 0 }, q: { x: L, y: H } });
+  list.push({ kind: 'ceil', p: { x: -50, y: H }, q: { x: L, y: H } });
+  return list;
+}
+function cast(o, phiDeg, surf) {
+  const r = rad(phiDeg), d = { x: Math.cos(r), y: -Math.sin(r) };
+  let best = null;
+  for (const s of surf) {
+    const e = { x: s.q.x - s.p.x, y: s.q.y - s.p.y };
+    const den = d.x * e.y - d.y * e.x;
+    if (Math.abs(den) < 1e-12) continue;
+    const w = { x: s.p.x - o.x, y: s.p.y - o.y };
+    const t = (w.x * e.y - w.y * e.x) / den;
+    const u = (w.x * d.y - w.y * d.x) / den;
+    if (t > 1e-6 && u >= -1e-9 && u <= 1 + 1e-9 && (!best || t < best.t))
+      best = { t, kind: s.kind, x: o.x + t * d.x, y: o.y + t * d.y };
+  }
+  return best;
+}
+// Точка прицела оси: где ось пересекает уровень ушей (продлённую линию публики).
+// Если ось уходит выше последнего ряда — где она упирается в стену или потолок.
+function aimPoint(o, phiDeg, st, surf) {
+  const L = st.roomL, x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
+  if (x2 > x1) {
+    const p = { x: x1, y: st.ear }, q = { x: x2, y: st.ear + st.rise };
+    const r = rad(phiDeg), d = { x: Math.cos(r), y: -Math.sin(r) }, e = { x: q.x - p.x, y: q.y - p.y };
+    const den = d.x * e.y - d.y * e.x;
+    if (Math.abs(den) > 1e-12) {
+      const w = { x: p.x - o.x, y: p.y - o.y };
+      const t = (w.x * e.y - w.y * e.x) / den;
+      const x = o.x + t * d.x, y = o.y + t * d.y;
+      if (t > 1e-6 && x <= x2 + 1e-9 && y >= 0) return { t, x, y, kind: x < x1 - 1e-9 ? 'front' : 'aud' };
+    }
+  }
+  return cast(o, phiDeg, surf);
+}
+// Куда смотрит ось — словами, для таблицы. Если ось уходит выше публики, считаем,
+// на сколько она проходит над ушами последнего ряда: до 1,5 м — нормальный прицел на последний ряд.
+function describeHit(b, st) {
+  const h = b.hit;
+  if (!h) return { text: 'мимо зала', cls: 'bad' };
+  if (h.kind === 'aud') return { text: `публика, ${fmt(h.x)} м`, cls: 'ok' };
+  if (h.kind === 'front') return { text: `до 1-го ряда, ${fmt(h.x)} м`, cls: 'warn' };
+  const x2 = Math.min(st.audEnd, st.roomL);
+  const over = b.c.y - (x2 - b.c.x) * Math.tan(rad(b.phi)) - (st.ear + st.rise);
+  const cls = over >= 0 && over <= 1.5 ? 'ok' : over > 3 || h.kind === 'ceil' ? 'bad' : 'warn';
+  return { text: `над последним рядом +${fmt(Math.max(0, over))} м`, cls };
+}
+// Покрытие публики: точка на уровне ушей покрыта, если видна колонкой в пределах её паспортного
+// вертикального раскрытия (−6 дБ). Шаг выборки — 10 см.
+function coverage(st, arr) {
+  const m = MODELS[st.model], L = st.roomL;
+  const x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
+  if (x2 <= x1) return null;
+  const N = Math.max(20, Math.ceil((x2 - x1) / 0.1));
+  const samples = [];
+  for (let k = 0; k <= N; k++) {
+    const x = x1 + (x2 - x1) * k / N, y = st.ear + st.rise * k / N;
+    const who = arr.boxes.filter(b => Math.abs(deg(Math.atan2(b.c.y - y, x - b.c.x)) - b.phi) <= m.vDisp / 2 + 1e-9).map(b => b.i);
+    samples.push({ x, y, who });
+  }
+  const gaps = [];
+  samples.forEach((s, k) => {
+    if (s.who.length) return;
+    const last = gaps[gaps.length - 1];
+    if (last && last.k === k - 1) { last.to = s.x; last.k = k; } else gaps.push({ from: s.x, to: s.x, k });
+  });
+  return {
+    samples, gaps,
+    share: samples.filter(s => s.who.length).length / samples.length,
+    first: samples[0], last: samples[samples.length - 1],
+  };
+}
+
+// ---------- уровень звука (приблизительно) ----------
+// Каждая колонка — точечный источник с паспортной диаграммой по вертикали: −6 дБ на краю раскрытия,
+// дальше спад по параболе в дБ, не ниже −35 дБ. Колонки складываются по энергии, без интерференции,
+// затухание 1/r². Абсолютный уровень не считаем: показываем разницу между местами в зале.
+function offAxisDb(theta, half) {
+  const t = Math.abs(theta);
+  if (t <= 2 * half) return -6 * (t / half) ** 2;
+  return Math.max(-35, -24 - 0.5 * (t - 2 * half));
+}
+function audienceSamples(st, maxN = 160) {
+  const L = st.roomL, x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
+  if (x2 <= x1) return [];
+  const N = Math.min(maxN, Math.max(20, Math.ceil((x2 - x1) / 0.2)));
+  return Array.from({ length: N + 1 }, (_, k) => ({ x: x1 + (x2 - x1) * k / N, y: st.ear + st.rise * k / N }));
+}
+function levels(st, boxes, samples) {
+  const half = MODELS[st.model].vDisp / 2;
+  return samples.map(p => {
+    let I = 0, covered = false;
+    for (const b of boxes) {
+      const dx = p.x - b.c.x, dy = b.c.y - p.y;
+      const th = deg(Math.atan2(dy, dx)) - b.phi;
+      if (Math.abs(th) <= half + 1e-9) covered = true;
+      I += 10 ** (offAxisDb(th, half) / 10) / (dx * dx + dy * dy);
+    }
+    return { x: p.x, y: p.y, L: 10 * Math.log10(I), covered };
+  });
+}
+function levelStats(lv) {
+  const Ls = lv.map(s => s.L);
+  const max = Math.max(...Ls), min = Math.min(...Ls);
+  const mean = Ls.reduce((a, b) => a + b, 0) / Ls.length;
+  const rms = Math.sqrt(Ls.reduce((a, b) => a + (b - mean) ** 2, 0) / Ls.length);
+  return { max, min, mean, rms, spread: max - min, gap: lv.filter(s => !s.covered).length / lv.length };
+}
+
+// ---------- автоподбор углов ----------
+// Цель: ровный уровень по публике без дыр в покрытии. Верхняя колонка смотрит на последний ряд
+// (допуск — до 1,5 м выше ушей), углы к низу массива по возможности не уменьшаются (J-форма).
+// Старт — J-форма по геометрии, дальше перебор допустимых углов по одному стыку, пока есть улучшение.
+function autoScore(st, samples) {
+  const arr = computeArray(st);
+  const ls = levelStats(levels(st, arr.boxes, samples));
+  let J = ls.rms + 0.25 * ls.spread + 20 * ls.gap;
+  for (let i = 2; i < st.n; i++) {
+    J += 0.15 * Math.max(0, st.angles[i - 1] - st.angles[i]);                         // углы книзу не уменьшаются
+    J += 0.05 * Math.max(0, Math.abs(st.angles[i] - st.angles[i - 1]) - 1.5) ** 2;    // без резких скачков
+  }
+  const b = arr.boxes[0], last = samples[samples.length - 1];
+  const over = b.c.y - (last.x - b.c.x) * Math.tan(rad(b.phi)) - last.y;
+  if (over > 1.5) J += 2 * (over - 1.5);
+  if (over < -0.5) J += 2 * (-0.5 - over);
+  return J;
+}
+function autoSplay(st0) {
+  const m = MODELS[st0.model];
+  const st = { ...st0, angles: [...st0.angles] };
+  const samples = audienceSamples(st, 80);
+  if (!samples.length) return null;
+  const n = st.n, first = samples[0], last = samples[samples.length - 1];
+  // стартовая J-форма: верх — на последний ряд, низ — на первый, углы растут книзу
+  const phiTop = deg(Math.atan2(st.topH - m.h / 2 - last.y, last.x));
+  const phiBot = deg(Math.atan2(st.topH - (n - 0.5) * m.h - first.y, first.x));
+  if (st.autoTilt) st.frameTilt = Math.max(-20, Math.min(20, Math.round((phiTop - st.angles[0]) * 2) / 2));
+  else st.angles[0] = snap(phiTop - st.frameTilt, m.frameSplays);
+  let cur = st.frameTilt + st.angles[0];
+  for (let k = 1; k < n; k++) {
+    const want = phiTop + (phiBot - phiTop) * (k / (n - 1)) ** 2;
+    st.angles[k] = snap(Math.max(0, want - cur), m.splays);
+    cur += st.angles[k];
+  }
+  let best = autoScore(st, samples);
+  const tryValue = (get, set, values) => {
+    const start = get();
+    let bestV = start, improved = false;
+    for (const v of values) {
+      if (v === start) continue;
+      set(v);
+      const sc = autoScore(st, samples);
+      if (sc < best - 1e-9) { best = sc; bestV = v; improved = true; }
+    }
+    set(bestV);
+    return improved;
+  };
+  // Перенос 1,5–3° между соседними стыками: меняет форму массива, не сдвигая нижние колонки
+  const maxSplay = m.splays[m.splays.length - 1];
+  const tryShift = i => {
+    let improved = false;
+    for (const d of [1.5, -1.5, 3, -3]) {
+      const a = st.angles[i] + d, c = st.angles[i + 1] - d;
+      if (a < 0 || c < 0 || a > maxSplay || c > maxSplay) continue;
+      const oa = st.angles[i], oc = st.angles[i + 1];
+      st.angles[i] = a; st.angles[i + 1] = c;
+      const sc = autoScore(st, samples);
+      if (sc < best - 1e-9) { best = sc; improved = true; } else { st.angles[i] = oa; st.angles[i + 1] = oc; }
+    }
+    return improved;
+  };
+  for (let pass = 0; pass < 20; pass++) {
+    let improved = false;
+    if (st.autoTilt) {
+      const t0 = st.frameTilt;
+      const opts = [-2, -1, -0.5, 0.5, 1, 2].map(d => Math.round((t0 + d) * 2) / 2).filter(v => v >= -20 && v <= 20);
+      improved = tryValue(() => st.frameTilt, v => { st.frameTilt = v; }, opts) || improved;
+    } else {
+      improved = tryValue(() => st.angles[0], v => { st.angles[0] = v; }, m.frameSplays) || improved;
+    }
+    for (let i = 1; i < n; i++)
+      improved = tryValue(() => st.angles[i], v => { st.angles[i] = v; }, m.splays) || improved;
+    for (let i = 1; i < n - 1; i++) improved = tryShift(i) || improved;
+    if (!improved) break;
+  }
+  return st;
+}
+
+const boxColor = (i, n) => `color-mix(in oklch, var(--ray-b) ${n > 1 ? Math.round(i / (n - 1) * 100) : 0}%, var(--ray-a))`;
+
+// ---------- форматирование ----------
+const fmt = (v, d = 1) => Number(v).toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtDeg = v => (Number.isInteger(v) ? String(v) : fmt(v, 1)) + '°';
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+const pts = (list, X, Y) => list.map(p => `${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+
+// ---------- пульт ввода ----------
+function numField(id, label, { step = 0.1, min, max, unit = 'м', hint = '' } = {}) {
+  return `<div class="field">
+    <label for="${id}">${label}, ${unit}</label>
+    <input type="number" id="${id}" data-key="${id}" step="${step}"${min != null ? ` min="${min}"` : ''}${max != null ? ` max="${max}"` : ''} inputmode="decimal">
+    ${hint ? `<span class="hint">${hint}</span>` : ''}
+  </div>`;
+}
+function renderControls() {
+  const m = MODELS[state.model];
+  document.getElementById('controls').innerHTML = `
+    <section class="group">
+      <h2>Массив</h2>
+      <div class="field">
+        <label for="model">Модель</label>
+        <select id="model" data-key="model">${Object.entries(MODELS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('')}</select>
+      </div>
+      <div class="field">
+        <label for="n">Колонок на сторону</label>
+        <div class="stepper">
+          <button type="button" data-step="n:-1" aria-label="Меньше колонок">−</button>
+          <input type="number" id="n" data-key="n" step="1" min="1" max="${m.maxBoxes}" inputmode="numeric">
+          <button type="button" data-step="n:1" aria-label="Больше колонок">+</button>
+        </div>
+      </div>
+      ${numField('topH', 'Высота верхней точки', { step: 0.1, min: 1, max: 40, hint: 'Верх передней грани первой колонки над полом' })}
+      <div class="field">
+        <label for="frameTilt">Наклон рамы, °</label>
+        <div class="stepper">
+          <button type="button" data-step="frameTilt:-0.5" aria-label="Наклон рамы вверх">−</button>
+          <input type="number" id="frameTilt" data-key="frameTilt" step="0.5" min="-20" max="20" inputmode="decimal">
+          <button type="button" data-step="frameTilt:0.5" aria-label="Наклон рамы вниз">+</button>
+        </div>
+        <span class="hint">Плюс — вниз, к публике. Задаётся выбором точки подвеса на раме</span>
+      </div>
+      <div class="auto">
+        <button type="button" class="primary" data-action="auto">Подобрать углы</button>
+        <label class="check"><input type="checkbox" id="autoTilt" data-key="autoTilt"> Подбирать и наклон рамы</label>
+        <span class="hint">Без галочки наклон рамы остаётся твоим, подбирается угол первой колонки к раме</span>
+        <div class="auto-result" id="autoResult" hidden>
+          <span id="autoNote"></span>
+          <button type="button" data-action="undo">Вернуть мои углы</button>
+        </div>
+      </div>
+    </section>
+    <section class="group">
+      <h2>Зал</h2>
+      ${numField('roomL', 'Длина зала', { step: 0.5, min: 3, max: 300, hint: 'От передней грани массива до задней стены' })}
+      ${numField('roomH', 'Высота потолка', { step: 0.5, min: 2, max: 80 })}
+    </section>
+    <section class="group">
+      <h2>Публика</h2>
+      ${numField('audStart', 'Первый ряд', { step: 0.5, min: 0, max: 300, hint: 'Расстояние от массива' })}
+      ${numField('audEnd', 'Последний ряд', { step: 0.5, min: 0.5, max: 300 })}
+      ${numField('ear', 'Высота ушей', { step: 0.1, min: 0, max: 30 })}
+      <div class="quick">
+        <button type="button" data-set="ear:1.7">Стоя 1,7</button>
+        <button type="button" data-set="ear:1.2">Сидя 1,2</button>
+      </div>
+      ${numField('rise', 'Подъём к последнему ряду', { step: 0.1, min: 0, max: 40, hint: 'Амфитеатр или балкон: насколько последний ряд выше первого' })}
+    </section>
+    <section class="group">
+      <h2>Вид</h2>
+      <label class="check"><input type="checkbox" id="cones" data-key="cones"> Конусы покрытия (−6 дБ, ${m.vDisp}° по вертикали)</label>
+      <div class="quick">
+        <button type="button" data-action="zero">Все углы 0°</button>
+        <button type="button" data-action="example">Вернуть пример</button>
+      </div>
+    </section>`;
+  syncInputs();
+}
+function syncInputs() {
+  document.querySelectorAll('#controls [data-key]').forEach(el => {
+    const v = state[el.dataset.key];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (document.activeElement !== el) el.value = v;
+  });
+}
+const NUM_LIMITS = { n: [1, 24], topH: [0.5, 60], frameTilt: [-20, 20], roomL: [3, 300], roomH: [2, 80], audStart: [0, 300], audEnd: [0.5, 300], ear: [0, 30], rise: [0, 40] };
+function setValue(key, raw) {
+  if (key === 'model') { state.model = raw; }
+  else if (key === 'cones' || key === 'autoTilt') { state[key] = !!raw; }
+  else {
+    let v = parseFloat(String(raw).replace(',', '.'));
+    if (!Number.isFinite(v)) return;
+    const [lo, hi] = NUM_LIMITS[key];
+    state[key] = Math.min(hi, Math.max(lo, v));
+  }
+  fitAngles(state);
+  update();
+}
+document.addEventListener('input', e => {
+  const el = e.target.closest('#controls [data-key]');
+  if (!el) return;
+  setValue(el.dataset.key, el.type === 'checkbox' ? el.checked : el.value);
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('#controls [data-key]');
+  if (el && el.type === 'number') syncInputsForce(el);
+});
+function syncInputsForce(el) { el.value = state[el.dataset.key]; }
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (b.dataset.step) {
+    const [k, d] = b.dataset.step.split(':');
+    setValue(k, Math.round((state[k] + parseFloat(d)) * 10) / 10);
+    syncInputs();
+  } else if (b.dataset.set) {
+    const [k, v] = b.dataset.set.split(':');
+    setValue(k, v);
+    syncInputs();
+  } else if (b.dataset.action === 'zero') {
+    state.angles = state.angles.map(() => 0);
+    update();
+  } else if (b.dataset.action === 'example') {
+    state = { ...EXAMPLE, angles: [...EXAMPLE.angles] };
+    undoState = null;
+    renderControls();
+    update();
+  } else if (b.dataset.action === 'auto') {
+    runAuto();
+  } else if (b.dataset.action === 'undo' && undoState) {
+    state.frameTilt = undoState.frameTilt;
+    state.angles = [...undoState.angles];
+    undoState = null;
+    document.getElementById('autoResult').hidden = true;
+    syncInputs();
+    update();
+  }
+});
+
+let undoState = null;
+function runAuto() {
+  const res = document.getElementById('autoResult'), note = document.getElementById('autoNote');
+  const before = arr.ls ? arr.ls.spread : null;
+  const next = autoSplay(state);
+  if (!next) {
+    note.textContent = 'Задай первый и последний ряд — без публики подбирать не под что.';
+    res.hidden = false;
+    return;
+  }
+  undoState = { frameTilt: state.frameTilt, angles: [...state.angles] };
+  state.frameTilt = next.frameTilt;
+  state.angles = next.angles;
+  syncInputs();
+  update();
+  const after = arr.ls.spread;
+  note.textContent = before == null
+    ? `Подобрано: разброс ${fmt(after)} дБ.`
+    : `Подобрано: разброс ${fmt(after)} дБ, было ${fmt(before)} дБ.`;
+  res.hidden = false;
+}
+
+// ---------- вид сбоку: зал ----------
+// Общий горизонтальный масштаб для разреза и графика уровня — чтобы метры совпадали по вертикали
+const X_PAD = { l: 36, r: 14 };
+const xRange = (st, arr) => ({ xMin: Math.min(-1.2, arr.minX - 0.4), xMax: st.roomL + 0.4 });
+
+function roomSVG(st, arr, W) {
+  const pad = { ...X_PAD, t: 14, b: 36 };
+  const { xMin, xMax } = xRange(st, arr);
+  const yMin = -0.3, yMax = Math.max(st.roomH, arr.topY + 0.5) + 0.3;
+  const s = (W - pad.l - pad.r) / (xMax - xMin);
+  const H = Math.round(pad.t + pad.b + (yMax - yMin) * s);
+  const X = x => pad.l + (x - xMin) * s, Y = y => pad.t + (yMax - y) * s;
+  const out = [];
+  // сетка
+  const minor = s >= 9 ? 1 : 2, major = 5;
+  for (let x = Math.ceil(xMin / minor) * minor; x <= xMax; x += minor)
+    out.push(`<line x1="${X(x)}" y1="${Y(yMax)}" x2="${X(x)}" y2="${Y(yMin)}" class="g${x % major === 0 ? ' gm' : ''}"/>`);
+  for (let y = 0; y <= yMax; y += minor)
+    out.push(`<line x1="${X(xMin)}" y1="${Y(y)}" x2="${X(xMax)}" y2="${Y(y)}" class="g${y % major === 0 ? ' gm' : ''}"/>`);
+  for (let x = 0; x <= xMax; x += major)
+    out.push(`<text x="${X(x)}" y="${H - 8}" class="ax" text-anchor="middle">${x}</text>`);
+  for (let y = major; y <= yMax; y += major)
+    out.push(`<text x="${pad.l - 6}" y="${Y(y) + 4}" class="ax" text-anchor="end">${y}</text>`);
+  out.push(`<text x="${W - pad.r}" y="${H - 8}" class="ax" text-anchor="end">м</text>`);
+  // зал
+  const x1 = Math.min(st.audStart, st.roomL), x2 = Math.min(st.audEnd, st.roomL);
+  out.push(`<polyline points="${X(xMin)},${Y(0)} ${X(st.roomL)},${Y(0)} ${X(st.roomL)},${Y(st.roomH)} ${X(xMin)},${Y(st.roomH)}" class="room"/>`);
+  if (x2 > x1) {
+    const a1 = { x: x1, y: st.ear }, a2 = { x: x2, y: st.ear + st.rise };
+    out.push(`<polygon points="${pts([a1, a2, { x: x2, y: 0 }, { x: x1, y: 0 }], X, Y)}" class="aud-fill"/>`);
+    out.push(`<line x1="${X(a1.x)}" y1="${Y(a1.y)}" x2="${X(a2.x)}" y2="${Y(a2.y)}" class="aud"/>`);
+    out.push(`<text x="${X((x1 + x2) / 2)}" y="${Y((a1.y + a2.y) / 2) + 16}" class="lbl" text-anchor="middle">публика · уши ${fmt(st.ear)} м</text>`);
+  }
+  // конусы покрытия и лучи
+  const m = MODELS[st.model], surf = surfaces(st), n = arr.boxes.length;
+  if (st.cones) arr.boxes.forEach(b => {
+    const edge = [];
+    for (let k = 0; k <= 16; k++) {
+      const h = cast(b.c, b.phi - m.vDisp / 2 + m.vDisp * k / 16, surf);
+      if (h) edge.push(h);
+    }
+    out.push(`<polygon points="${pts([b.c, ...edge], X, Y)}" class="cone" style="fill:${boxColor(b.i, n)}" data-i="${b.i}"/>`);
+  });
+  arr.boxes.forEach(b => {
+    const h = b.hit;
+    if (!h) return;
+    const col = boxColor(b.i, n);
+    out.push(`<line x1="${X(b.c.x)}" y1="${Y(b.c.y)}" x2="${X(h.x)}" y2="${Y(h.y)}" class="ray" style="stroke:${col}" data-i="${b.i}"/>`);
+    out.push(`<circle cx="${X(h.x)}" cy="${Y(h.y)}" r="3.5" class="hit" style="fill:${col}" data-i="${b.i}"/>`);
+  });
+  // полоса покрытия публики под полом
+  if (arr.cov) {
+    const ss = arr.cov.samples, step = ss.length > 1 ? ss[1].x - ss[0].x : 0.1;
+    ss.forEach(p => {
+      const cls = p.who.length === 0 ? 'cov0' : p.who.length === 1 ? 'cov1' : 'cov2';
+      out.push(`<rect x="${X(p.x - step / 2).toFixed(1)}" y="${Y(0) + 5}" width="${Math.max(1, step * s + 0.6).toFixed(1)}" height="7" class="${cls}"/>`);
+    });
+  }
+  // массив
+  out.push(`<polygon points="${pts(arr.frame, X, Y)}" class="frame"/>`);
+  arr.boxes.forEach(b => out.push(`<polygon points="${pts(b.poly, X, Y)}" class="box" data-i="${b.i}"/>`));
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Разрез зала с массивом колонок">${out.join('')}</svg>`;
+}
+
+// ---------- график уровня по залу ----------
+function levelSVG(st, arr, W) {
+  const lv = arr.lv, ls = arr.ls;
+  if (!lv || !lv.length) return '<p class="note">Задай первый и последний ряд, чтобы увидеть уровень.</p>';
+  const pad = { ...X_PAD, t: 12, b: 26 };
+  const { xMin, xMax } = xRange(st, arr);
+  const s = (W - pad.l - pad.r) / (xMax - xMin);
+  const X = x => pad.l + (x - xMin) * s;
+  const top = 1, bottom = Math.min(-6, Math.floor((ls.min - ls.max - 1) / 3) * 3);
+  const H = 160, Y = d => pad.t + (top - d) / (top - bottom) * (H - pad.t - pad.b);
+  const out = [];
+  for (let d = 0; d >= bottom; d -= 3) {
+    out.push(`<line x1="${X(xMin)}" y1="${Y(d)}" x2="${X(xMax)}" y2="${Y(d)}" class="g${d === 0 ? ' gm' : ''}"/>`);
+    out.push(`<text x="${pad.l - 6}" y="${Y(d) + 4}" class="ax" text-anchor="end">${d === 0 ? '0' : '−' + Math.abs(d)}</text>`);
+  }
+  for (let x = 0; x <= xMax; x += 5)
+    out.push(`<text x="${X(x)}" y="${H - 6}" class="ax" text-anchor="middle">${x}</text>`);
+  out.push(`<text x="${W - pad.r}" y="${H - 6}" class="ax" text-anchor="end">м</text>`);
+  out.push(`<text x="${pad.l + 4}" y="${pad.t + 10}" class="ax">дБ</text>`);
+  const line = lv.map(p => `${X(p.x).toFixed(1)},${Y(p.L - ls.max).toFixed(1)}`);
+  out.push(`<polygon points="${X(lv[0].x).toFixed(1)},${Y(bottom)} ${line.join(' ')} ${X(lv[lv.length - 1].x).toFixed(1)},${Y(bottom)}" class="lvl-fill"/>`);
+  out.push(`<polyline points="${line.join(' ')}" class="lvl"/>`);
+  const ym = Y(ls.mean - ls.max);
+  out.push(`<line x1="${X(lv[0].x)}" y1="${ym}" x2="${X(lv[lv.length - 1].x)}" y2="${ym}" class="lvl-mean"/>`);
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Примерный уровень звука по глубине зала">${out.join('')}</svg>`;
+}
+
+// ---------- массив крупно ----------
+function arraySVG(st, arr, W) {
+  const m = MODELS[st.model], n = arr.boxes.length;
+  const stub = 0.55; // длина оси на крупном виде, м
+  const xs = [arr.minX - 0.42, arr.maxX + stub + 0.1];
+  const ys = [arr.bottomY - 0.22, arr.topY + 0.2];
+  const pad = { l: 8, r: 8, t: 8, b: 8 };
+  const sx = (W - pad.l - pad.r) / (xs[1] - xs[0]);
+  const s = Math.min(sx, 440 / (ys[1] - ys[0]));
+  const w = Math.round((xs[1] - xs[0]) * s + pad.l + pad.r), H = Math.round((ys[1] - ys[0]) * s + pad.t + pad.b);
+  const X = x => pad.l + (x - xs[0]) * s, Y = y => pad.t + (ys[1] - y) * s;
+  const out = [];
+  out.push(`<polygon points="${pts(arr.frame, X, Y)}" class="frame"/>`);
+  arr.boxes.forEach(b => {
+    const col = boxColor(b.i, n);
+    const tip = { x: b.c.x + stub * b.a.x, y: b.c.y + stub * b.a.y };
+    out.push(`<line x1="${X(b.c.x)}" y1="${Y(b.c.y)}" x2="${X(tip.x)}" y2="${Y(tip.y)}" class="ray" style="stroke:${col}" data-i="${b.i}"/>`);
+    out.push(`<polygon points="${pts(b.poly, X, Y)}" class="box" data-i="${b.i}"/>`);
+    out.push(`<rect x="${X(b.c.x) - 3}" y="${Y(b.c.y) - 3}" width="6" height="6" style="fill:${col}" data-i="${b.i}"/>`);
+    const mid = { x: b.c.x - 0.2 * b.a.x, y: b.c.y - 0.2 * b.a.y };
+    out.push(`<text x="${X(mid.x)}" y="${Y(mid.y) + 4}" class="num" text-anchor="middle">${b.i + 1}</text>`);
+    // угол к предыдущей колонке (или к раме) — подпись у задней части стыка
+    const back = { x: b.top.x - 0.40 * b.a.x - 0.02, y: b.top.y - 0.40 * b.a.y };
+    out.push(`<text x="${X(back.x)}" y="${Y(back.y) + 4}" class="ang" text-anchor="end">${fmtDeg(st.angles[b.i])}</text>`);
+  });
+  const topB = arr.boxes[0], lowB = arr.boxes[n - 1];
+  out.push(`<text x="${X(topB.top.x) + 6}" y="${Y(topB.top.y) - 2}" class="lbl">верх ${fmt(st.topH, 2)} м</text>`);
+  out.push(`<text x="${X(lowB.bottom.x) + 6}" y="${Y(lowB.bottom.y) + 14}" class="lbl">низ ${fmt(lowB.bottom.y, 2)} м</text>`);
+  return `<svg viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" style="max-width:${w}px" role="img" aria-label="Массив крупно: углы между колонками">${out.join('')}</svg>`;
+}
+
+// ---------- сборка страницы ----------
+function renderResults() {
+  document.getElementById('results').innerHTML = `
+    <div class="chips" id="chips"></div>
+    <section class="panel card">
+      <div class="head"><h2>Разрез зала</h2><span class="note" id="roomNote"></span></div>
+      <div class="view" id="roomView"></div>
+      <div class="legend">
+        <span><i class="cov1"></i>публика в покрытии</span>
+        <span><i class="cov2"></i>перекрытие 2+ колонок</span>
+        <span><i class="cov0"></i>дыра в покрытии</span>
+      </div>
+    </section>
+    <section class="panel card">
+      <div class="head"><h2>Уровень по залу</h2><span class="note">приблизительно · 0 дБ — самое громкое место публики, пунктир — среднее</span></div>
+      <div class="view" id="levelView"></div>
+    </section>
+    <div class="lower">
+      <section class="panel card">
+        <div class="head"><h2>Массив крупно</h2><span class="note">углы между колонками</span></div>
+        <div class="view" id="arrayView"></div>
+      </section>
+      <section class="panel card">
+        <div class="head"><h2>Колонки</h2><span class="note">угол 1-й колонки — к раме, остальных — к предыдущей</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>№</th><th>Угол</th><th>Наклон оси</th><th>Центр, м</th><th>Ось попадает</th><th>Дистанция, м</th>
+            </tr></thead>
+            <tbody id="boxRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>`;
+}
+
+// Таблица: строки пересобираются только при смене количества колонок, иначе обновляются значения —
+// так выпадающий список угла не теряет фокус
+function renderTable() {
+  const m = MODELS[state.model], tb = document.getElementById('boxRows');
+  if (tb.dataset.n !== String(state.n) || tb.dataset.model !== state.model) {
+    tb.innerHTML = arr.boxes.map(b => {
+      const list = b.i === 0 ? m.frameSplays : m.splays;
+      return `<tr data-i="${b.i}">
+        <td><span class="swatch" style="background:${boxColor(b.i, state.n)}"></span>${b.i + 1}</td>
+        <td><select data-angle="${b.i}" aria-label="Угол колонки ${b.i + 1}">${list.map(v => `<option value="${v}">${fmtDeg(v)}</option>`).join('')}</select></td>
+        <td data-c="tilt"></td><td data-c="h"></td><td class="where" data-c="hit"></td><td data-c="dist"></td>
+      </tr>`;
+    }).join('');
+    tb.dataset.n = String(state.n);
+    tb.dataset.model = state.model;
+  }
+  arr.boxes.forEach(b => {
+    const tr = tb.children[b.i];
+    const sel = tr.querySelector('select');
+    if (document.activeElement !== sel) sel.value = String(state.angles[b.i]);
+    tr.querySelector('[data-c="tilt"]').textContent = fmtDeg(Math.round(b.phi * 10) / 10);
+    tr.querySelector('[data-c="h"]').textContent = fmt(b.c.y, 2);
+    const d = describeHit(b, state);
+    tr.querySelector('[data-c="hit"]').innerHTML = `<span class="tag ${d.cls}">${esc(d.text)}</span>`;
+    tr.querySelector('[data-c="dist"]').textContent = b.hit ? fmt(b.hit.t) : '—';
+  });
+}
+document.addEventListener('change', e => {
+  const sel = e.target.closest('select[data-angle]');
+  if (!sel) return;
+  state.angles[+sel.dataset.angle] = parseFloat(sel.value);
+  update();
+});
+
+// Подсветка одной колонки: наведение или тап по строке таблицы, колонке, лучу
+let hlIndex = null;
+function applyHighlight() {
+  document.querySelectorAll('#results [data-i]').forEach(el => {
+    const on = hlIndex !== null && +el.dataset.i === hlIndex;
+    if (el.tagName === 'TR') el.classList.toggle('hl', on);
+    else el.classList.toggle('dim', hlIndex !== null && !on);
+  });
+}
+function setHighlight(i) { if (hlIndex !== i) { hlIndex = i; applyHighlight(); } }
+document.addEventListener('pointerover', e => {
+  const el = e.target.closest('#results [data-i]');
+  if (el && e.pointerType === 'mouse') setHighlight(+el.dataset.i);
+});
+document.addEventListener('pointerout', e => {
+  if (e.pointerType === 'mouse' && e.target.closest('#results [data-i]') && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('#results [data-i]'))) setHighlight(null);
+});
+document.addEventListener('click', e => {
+  if (e.target.closest('select')) return;
+  const el = e.target.closest('#results [data-i]');
+  if (el) setHighlight(hlIndex === +el.dataset.i ? null : +el.dataset.i);
+});
+
+// Сводка над разрезом
+function renderChips() {
+  const m = MODELS[state.model], f = m.frame, cov = arr.cov;
+  const chip = (k, v, cls = '') => `<div class="chip ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const rowChip = (title, s) => s && s.who.length
+    ? chip(title, `колонка ${s.who.map(i => i + 1).join(', ')}`, 'ok')
+    : chip(title, 'не покрыт', 'bad');
+  const weight = state.n * m.weight + f.weight;
+  const out = [];
+  if (cov) {
+    const pct = Math.round(cov.share * 100);
+    out.push(chip('Публика в покрытии', `${pct} %`, pct === 100 ? 'ok' : pct >= 90 ? 'warn' : 'bad'));
+    out.push(rowChip('Первый ряд', cov.first));
+    out.push(rowChip('Последний ряд', cov.last));
+    if (arr.ls) {
+      const sp = arr.ls.spread;
+      out.push(chip('Разброс уровня', `${fmt(sp)} дБ`, sp <= 6 ? 'ok' : sp <= 10 ? 'warn' : 'bad'));
+    }
+  } else {
+    out.push(chip('Публика', 'проверь ряды', 'bad'));
+  }
+  out.push(chip('Низ массива', `${fmt(arr.bottomY, 2)} м`));
+  out.push(chip('Вес подвеса', `${fmt(weight, 1)} из ${f.maxLoad} кг`, weight <= f.maxLoad ? 'ok' : 'bad'));
+  out.push(chip('Колонок', `${state.n} из ${f.maxBoxes}`, state.n <= f.maxBoxes ? 'ok' : 'bad'));
+  document.getElementById('chips').innerHTML = out.join('');
+}
+
+function renderNotes() {
+  const m = MODELS[state.model];
+  document.getElementById('notes').innerHTML = `
+    <p>Расчёт геометрический. Луч — ось колонки из центра передней грани, точка — где ось пересекает уровень ушей. Конус — паспортное раскрытие ${m.vDisp}° по вертикали (−6 дБ) одной колонки. В дальней зоне массив работает как одна линия, поэтому реальное покрытие на высоких частотах уже конусов.</p>
+    <p>Уровень по залу — оценка: колонки складываются по энергии без интерференции, затухание с расстоянием и паспортная диаграмма по вертикали. Он показывает разницу между местами, а не абсолютные децибелы. «Подобрать углы» ищет самый ровный уровень без дыр в покрытии: верхняя колонка смотрит на последний ряд, углы плавно растут книзу. Результат — хорошая отправная точка, финальную настройку делай по замеру.</p>
+    <p>Размеры и шарниры CAD 208 взяты с чертежа HK Audio, углы и нагрузки — из CADIS Manual 1.0. Рама нарисована схематично. Вес подвеса: колонки (${fmt(m.weight, 1)} кг) и рама (${fmt(m.frame.weight, 1)} кг), без лебёдок и кабеля. Больше ${m.frame.maxBoxes} колонок в подвесе — сертификат TÜV не действует. Безопасность подвеса проверяй по мануалу HK Audio.</p>
+    <p>Неофициальный калькулятор, с HK Audio не связан.</p>`;
+}
+
+let arr = null;
+function drawViews() {
+  const rv = document.getElementById('roomView');
+  if (rv) rv.innerHTML = roomSVG(state, arr, Math.max(320, rv.clientWidth));
+  const lvv = document.getElementById('levelView');
+  if (lvv) lvv.innerHTML = levelSVG(state, arr, Math.max(320, lvv.clientWidth));
+  const av = document.getElementById('arrayView');
+  if (av) av.innerHTML = arraySVG(state, arr, Math.max(260, av.clientWidth));
+  const note = document.getElementById('roomNote');
+  if (note) note.textContent = `${state.n} × CAD 208 · верх ${fmt(state.topH)} м · рама ${fmtDeg(state.frameTilt)}`;
+  applyHighlight();
+}
+function update() {
+  arr = computeArray(state);
+  const surf = surfaces(state);
+  arr.boxes.forEach(b => { b.hit = aimPoint(b.c, b.phi, state, surf); });
+  arr.cov = coverage(state, arr);
+  arr.lv = levels(state, arr.boxes, audienceSamples(state));
+  arr.ls = arr.lv.length ? levelStats(arr.lv) : null;
+  renderChips();
+  drawViews();
+  renderTable();
+  applyHighlight();
+  saveState();
+}
+
+renderControls();
+renderResults();
+renderNotes();
+update();
+new ResizeObserver(() => drawViews()).observe(document.getElementById('results'));
+</script>
+
+</html>
