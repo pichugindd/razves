@@ -425,20 +425,34 @@ function coverage(h, arr, samples) {
 }
 </script>
 <script>
-// ---------- источники звука ----------
-// Каждая колонка — источник в центре передней грани, в координатах зала, со своим наклоном и поворотом.
-function hangSources(h, arr) {
+// ---------- физика линейного массива ----------
+// Фронт каждой колонки — излучающая полоса высотой h. У колонки с рупором постоянной направленности
+// (CAD 208) фронт — дуга с раскрытием arc, у плоского фронта (DOSC, Kara II) дуги нет. Дугу делим на куски
+// по 5°, каждый кусок — прямая синфазная полоса со своей направленностью sin(x)/x.
+// Давление от всех кусков всех колонок всех подвесов складывается с учётом фазы (разности хода),
+// поэтому сами собой появляются сложение колонок, дальнобойность прямого участка и провалы интерференции.
+// Учитываем: затухание 1/r, поглощение в воздухе (20 °C, 50 %), паспортную диаграмму по горизонтали
+// (на низах она расширяется). Не учитываем: отражения, частотную характеристику и обработку колонок.
+function hangSources(h, arr, hang = 0) {
   const m = MODELS[h.model];
   const pat = m.hPatterns[h.pattern] || m.hPatterns[m.hDefault];
-  const a = rad(h.az);
-  return arr.boxes.map(b => {
-    const W = toWorld(h, b.c);
-    const p = rad(b.phi);
-    return {
-      X: W.X, Y: W.Y, Z: W.Z, ca: Math.cos(a), sa: Math.sin(a), cp: Math.cos(p), sp: Math.sin(p),
-      m, pat, gain: 10 ** ((pat.gain || 0) / 20),
-    };
+  const a = rad(h.az), ca = Math.cos(a), sa = Math.sin(a);
+  const K = Math.max(1, Math.ceil(m.arc / 5));
+  const ell = m.h / K;
+  const R = m.arc > 0 ? m.h / (2 * Math.sin(rad(m.arc / 2))) : 0;
+  const gain = 10 ** ((pat.gain || 0) / 20) / K;
+  const out = [];
+  arr.boxes.forEach(b => {
+    for (let j = 0; j < K; j++) {
+      const v = m.h / 2 - (j + 0.5) * ell;                 // место куска на фронте, плюс — вверх
+      const dTilt = m.arc * ((j + 0.5) / K - 0.5);         // верхний кусок смотрит выше
+      const back = R ? R * (1 - Math.cos(rad(dTilt))) : 0; // края дуги чуть позади середины
+      const W = toWorld(h, { x: b.c.x + v * b.u.x - back * b.a.x, y: b.c.y + v * b.u.y - back * b.a.y });
+      const phi = rad(b.phi + dTilt);
+      out.push({ X: W.X, Y: W.Y, Z: W.Z, ca, sa, cp: Math.cos(phi), sp: Math.sin(phi), ell, pat, gain, box: b.i, hang });
+    }
   });
+  return out;
 }
 
 // Направленность по горизонтали: −6 дБ на краю паспортного раскрытия, своё для левой и правой стороны
@@ -449,12 +463,6 @@ function hGain(beta, pat) {
   const n = Math.log(0.5) / Math.log(Math.cos(rad(half)));
   return Math.max(0.1, Math.cos(rad(b)) ** n);
 }
-// Направленность по вертикали одной колонки: −6 дБ на краю раскрытия, дальше спад, не ниже −35 дБ
-function offAxisDb(theta, half) {
-  const t = Math.abs(theta);
-  if (t <= 2 * half) return -6 * (t / half) ** 2;
-  return Math.max(-35, -24 - 0.5 * (t - 2 * half));
-}
 
 // Геометрия точки относительно источника: расстояние, угол от оси по горизонтали (плюс — влево)
 // и синус угла от оси по вертикали (плюс — ниже оси)
@@ -462,24 +470,66 @@ function relTo(s, P) {
   const dx = P.X - s.X, dy = P.Y - s.Y, dz = P.Z - s.Z;
   const fwd = dx * s.ca + dy * s.sa, lat = -dx * s.sa + dy * s.ca;
   const r = Math.hypot(fwd, lat, dz) || 1e-6;
-  const along = fwd * s.cp - dz * s.sp;          // проекция на ось колонки
-  const up = fwd * s.sp + dz * s.cp;             // проекция на «верх» колонки
+  const along = fwd * s.cp - dz * s.sp;          // проекция на ось
+  const up = fwd * s.sp + dz * s.cp;             // проекция на «верх»
   return { r, beta: deg(Math.atan2(lat, along)), sinV: clamp(-up / r, -1, 1) };
 }
 
-// Уровень в точках, дБ (без привязки к абсолютному значению).
-// Сейчас: сложение по энергии, затухание 1/r², паспортные диаграммы.
-function levelAt(points, sources) {
-  return points.map(P => {
-    let I = 0;
+// Октавные полосы и частоты внутри полосы (равный шаг — фаза поворачивается без лишних синусов)
+const BANDS = [125, 250, 500, 1000, 2000, 4000, 8000];
+const FREQ_STEPS = [0.78, 0.92, 1.06, 1.2, 1.34];
+const C_SOUND = 343;
+const AIR_DB_KM = { 125: 0.4, 250: 1.0, 500: 1.9, 1000: 3.7, 2000: 9.7, 4000: 32.8, 8000: 117 };
+const H_WIDEN = { 125: 0.15, 250: 0.35, 500: 0.7 }; // на низах диаграмма по горизонтали шире паспортной
+
+// Уровень в точках, дБ относительно произвольного нуля: широкая полоса (розовый шум) и по октавам.
+// Внутри подвеса колонки всегда складываются с учётом фазы. Разные подвесы — по энергии (стерео, разный
+// сигнал слева и справа) или с учётом фазы, если mono = true (один и тот же сигнал во всех подвесах).
+function levelAt(points, sources, bands = BANDS, steps = FREQ_STEPS, mono = false) {
+  const NB = bands.length, NM = steps.length, dStep = NM > 1 ? steps[1] - steps[0] : 0;
+  const hangIds = [...new Set(sources.map(s => s.hang || 0))];
+  const NH = mono ? 1 : hangIds.length;
+  const slot = new Map(hangIds.map((id, k) => [id, mono ? 0 : k]));
+  const k0 = bands.map(f => 2 * Math.PI * f * steps[0] / C_SOUND);
+  const dk = bands.map(f => 2 * Math.PI * f * dStep / C_SOUND);
+  const air = bands.map(f => AIR_DB_KM[f] / 1000 * Math.LN10 / 20);
+  const widen = bands.map(f => H_WIDEN[f] || 1);
+  const re = new Float64Array(NH * NB * NM), im = new Float64Array(NH * NB * NM);
+  const out = { broad: new Float64Array(points.length), band: bands.map(() => new Float64Array(points.length)) };
+  points.forEach((P, pi) => {
+    re.fill(0); im.fill(0);
     for (const s of sources) {
+      const off = slot.get(s.hang || 0) * NB * NM;
       const g = relTo(s, P);
-      const v = offAxisDb(deg(Math.asin(g.sinV)), s.m.vDisp / 2);
-      const hg = hGain(g.beta, s.pat) * s.gain;
-      I += hg * hg * 10 ** (v / 10) / (g.r * g.r);
+      const lnH = Math.log(hGain(g.beta, s.pat));
+      const base = s.gain / g.r;
+      const xPerHz = Math.PI * s.ell * g.sinV / C_SOUND;
+      for (let b = 0; b < NB; b++) {
+        const amp = base * Math.exp(widen[b] * lnH - air[b] * g.r);
+        const dph = dk[b] * g.r, rr = Math.cos(dph), ri = -Math.sin(dph);
+        let cr = Math.cos(k0[b] * g.r), ci = -Math.sin(k0[b] * g.r);
+        let x = xPerHz * bands[b] * steps[0];
+        const dx = xPerHz * bands[b] * dStep;
+        for (let q = off + b * NM, e = q + NM; q < e; q++) {
+          const A = Math.abs(x) < 1e-6 ? amp : amp * Math.sin(x) / x;
+          re[q] += A * cr; im[q] += A * ci;
+          const t = cr * rr - ci * ri; ci = cr * ri + ci * rr; cr = t;
+          x += dx;
+        }
+      }
     }
-    return 10 * Math.log10(I || 1e-12);
+    let tot = 0;
+    for (let b = 0; b < NB; b++) {
+      let e = 0;
+      for (let hh = 0; hh < NH; hh++)
+        for (let q = (hh * NB + b) * NM, end = q + NM; q < end; q++) e += re[q] * re[q] + im[q] * im[q];
+      e /= NM;
+      out.band[b][pi] = 10 * Math.log10(e || 1e-20);
+      tot += e;
+    }
+    out.broad[pi] = 10 * Math.log10(tot || 1e-20);
   });
+  return out;
 }
 
 function levelStats(Ls) {
@@ -512,9 +562,11 @@ function zoneGrid(st, maxPts = 2400) {
 // ряд (допуск — до 1,5 м выше ушей), углы к низу массива не уменьшаются и растут без резких скачков.
 // Старт — J-форма по геометрии, дальше перебор допустимых углов по одному стыку и перенос угла
 // между соседними стыками, пока есть улучшение.
+const AUTO_BANDS = [250, 1000, 4000], AUTO_STEPS = [0.85, 1, 1.15];
 function autoScore(h, sec, samples) {
   const arr = computeArray(h);
-  const Ls = levelAt(samples.map(p => secWorld(sec, p.s, p.z)), hangSources(h, arr));
+  // для скорости — три октавы по три частоты; этого хватает, чтобы почувствовать сложение колонок
+  const Ls = levelAt(samples.map(p => secWorld(sec, p.s, p.z)), hangSources(h, arr), AUTO_BANDS, AUTO_STEPS).broad;
   const ls = levelStats(Ls);
   const gap = 1 - coverage(h, arr, samples).share;
   let J = ls.rms + 0.25 * ls.spread + 20 * gap;
@@ -627,7 +679,7 @@ function gridLines(out, X, Y, xr, yr, H, pad, W, s) {
   for (let y = Math.ceil(yr[0] / minor) * minor; y <= yr[1]; y += minor)
     out.push(`<line x1="${X(xr[0])}" y1="${Y(y)}" x2="${X(xr[1])}" y2="${Y(y)}" class="g${y % major === 0 ? ' gm' : ''}"/>`);
   for (let x = Math.ceil(xr[0] / major) * major; x <= xr[1]; x += major)
-    out.push(`<text x="${X(x)}" y="${H - 8}" class="ax" text-anchor="middle">${x}</text>`);
+    if (X(x) < W - pad.r - 16) out.push(`<text x="${X(x)}" y="${H - 8}" class="ax" text-anchor="middle">${x}</text>`);
   for (let y = Math.ceil(yr[0] / major) * major; y <= yr[1]; y += major)
     out.push(`<text x="${pad.l - 6}" y="${Y(y) + 4}" class="ax" text-anchor="end">${y}</text>`);
   out.push(`<text x="${W - pad.r}" y="${H - 8}" class="ax" text-anchor="end">м</text>`);
@@ -823,7 +875,7 @@ const EXAMPLE = () => ({
   ],
   zones: [{ id: 'z1', name: 'Партер', x1: 5, x2: 30, y1: -9, y2: 9, z: 1.7, rise: 0 }],
   sel: 0,
-  view: { cones: true },
+  view: { cones: true, band: 'pink', mono: false },
   autoTilt: true,
 });
 
@@ -845,6 +897,7 @@ function sanitize(st) {
   st.room = { ...ex.room, ...(st.room || {}) };
   for (const k of ['L', 'W', 'H']) st.room[k] = num(st.room[k], ex.room[k]);
   st.view = { ...ex.view, ...(st.view || {}) };
+  if (st.view.band !== 'pink' && !BANDS.includes(+st.view.band)) st.view.band = 'pink';
   st.autoTilt = st.autoTilt !== false;
   st.hangs = (Array.isArray(st.hangs) && st.hangs.length ? st.hangs : ex.hangs).map(h => ({ ...h, id: h.id || newId('h') }));
   // зеркальная копия без исходника превращается в обычный подвес
@@ -912,7 +965,7 @@ function describeHit(b, sec) {
 }
 
 let V = null; // всё посчитанное для отрисовки
-function derive() {
+function derive(fast = false) {
   const geo = { room: state.room, zones: state.zones.map(normZone) };
   const hangs = state.hangs.map((hg, idx) => {
     const h = resolveHang(hg);
@@ -922,14 +975,18 @@ function derive() {
     arr.boxes.forEach(b => { b.hit = cast(b.c, b.phi, surf); });
     return { idx, h, arr, sec };
   });
-  const sources = hangs.flatMap(d => hangSources(d.h, d.arr));
+  const sources = hangs.flatMap(d => hangSources(d.h, d.arr, d.idx));
   const sel = hangs[state.sel];
   const samples = sectionSamples(sel.sec);
   sel.cov = coverage(sel.h, sel.arr, samples);
-  const secLv = levelAt(samples.map(p => secWorld(sel.sec, p.s, p.z)), sources);
+  // выбранная полоса: широкая (розовый шум) или одна октава
+  const pick = res => Array.from(state.view.band === 'pink' ? res.broad : res.band[BANDS.indexOf(+state.view.band)]);
+  const mono = !!state.view.mono;
+  const secLv = pick(levelAt(samples.map(p => secWorld(sel.sec, p.s, p.z)), sources, BANDS, FREQ_STEPS, mono));
   sel.secL = samples.map((p, k) => ({ s: p.s, zi: p.zi, L: secLv[k] }));
-  const grid = zoneGrid(geo);
-  const map = { points: grid.points, L: levelAt(grid.points, sources) };
+  // пока подвес тащат мышью, карта считается грубее
+  const grid = zoneGrid(geo, fast ? 600 : 2400);
+  const map = { points: grid.points, L: pick(levelAt(grid.points, sources, BANDS, FREQ_STEPS, mono)) };
   const all = map.L.concat(secLv);
   const ref = all.length ? Math.max(...all) : 0;
   sel.ref = ref;
@@ -1030,6 +1087,15 @@ function renderControls() {
     </section>
     <section class="group">
       <h2>Вид</h2>
+      <div class="field">
+        <label for="f-view-band">Полоса для карты</label>
+        <select id="f-view-band" data-path="view.band">
+          <option value="pink">Розовый шум</option>
+          ${BANDS.map(f => `<option value="${f}">${f >= 1000 ? f / 1000 + ' кГц' : f + ' Гц'}</option>`).join('')}
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="f-mono" data-path="view.mono"> Моно: подвесы складываются с учётом фазы</label>
+      <span class="hint">Без галочки подвесы складываются по энергии, как при стерео. С галочкой видна интерференция между ними, как при одинаковом сигнале</span>
       <label class="check"><input type="checkbox" id="f-cones" data-path="view.cones"> Конусы покрытия (−6 дБ по паспорту)</label>
       <div class="quick">
         <button type="button" data-action="zero">Все углы 0°</button>
@@ -1064,7 +1130,7 @@ function setPath(path, raw) {
   const [head, ...rest] = path.split('.');
   const parse = () => { const v = parseFloat(String(raw).replace(',', '.')); return Number.isFinite(v) ? v : null; };
   if (head === 'autoTilt') { state.autoTilt = !!raw; return false; }
-  if (head === 'view') { state.view[rest[0]] = !!raw; return false; }
+  if (head === 'view') { state.view[rest[0]] = rest[0] === 'band' ? String(raw) : !!raw; return false; }
   if (head === 'room') { const v = parse(); if (v == null) return false; state.room[rest[0]] = clamp(v, ...LIMITS[path]); return false; }
   if (head === 'zones') {
     const z = state.zones[+rest[0]], f = rest[1];
@@ -1215,7 +1281,7 @@ function bindTopView() {
     src.y = hg.mirrorOf ? -y : y;
     scheduleUpdate();
   });
-  const end = e => { if (drag && e.pointerId === drag.id) { drag = null; syncInputs(); } };
+  const end = e => { if (drag && e.pointerId === drag.id) { drag = null; syncInputs(); update(); } };
   box.addEventListener('pointerup', end);
   box.addEventListener('pointercancel', end);
 }
@@ -1245,7 +1311,7 @@ function renderResults() {
       </div>
     </section>
     <section class="panel card">
-      <div class="head"><h2>Уровень вдоль разреза</h2><span class="note">все подвесы вместе · 0 дБ — самое громкое место публики</span></div>
+      <div class="head"><h2>Уровень вдоль разреза</h2><span class="note" id="levelNote"></span></div>
       <div class="view" id="levelView"></div>
     </section>
     <div class="lower">
@@ -1356,7 +1422,8 @@ function renderChips() {
 function renderNotes() {
   document.getElementById('notes').innerHTML = `
     <p>Расчёт геометрический. Луч — ось колонки из центра передней грани, точка — где ось упирается в публику, пол, стену или потолок. Конус — паспортное раскрытие колонки по вертикали (−6 дБ). Разрез строится по оси выбранного подвеса.</p>
-    <p>Уровень — оценка: колонки складываются по энергии без интерференции, затухание с расстоянием и паспортные диаграммы по вертикали и горизонтали. Он показывает разницу между местами, а не абсолютные децибелы. «Подобрать углы» ищет самый ровный уровень вдоль разреза без дыр в покрытии: верхняя колонка смотрит на дальний ряд, углы плавно растут книзу.</p>
+    <p>Уровень считается как у линейного массива: фронт каждой колонки — излучающая полоса, давление от всех колонок всех подвесов складывается с учётом фазы на 35 частотах от 100 Гц до 11 кГц, с поглощением в воздухе. Поэтому видно, как колонки при малых углах складываются в одну линию и бьют дальше, и где появляются провалы интерференции. Отражений, частотной характеристики и обработки колонок нет, а диаграммы — модель по паспорту и геометрии, а не замеры производителя: форма распределения близка к реальной, точные децибелы — нет. Уровень показан относительно самого громкого места публики.</p>
+    <p>«Подобрать углы» ищет самый ровный уровень вдоль разреза без дыр в покрытии: верхняя колонка смотрит на дальний ряд, углы плавно растут книзу.</p>
     <p>Данные колонок: ${Object.values(MODELS).map(m => `${esc(m.label)} — ${esc(m.source)}`).join('; ')}. Рама нарисована схематично. Вес подвеса — колонки и рама, без лебёдок и кабеля. Безопасность подвеса проверяй по документации производителя.</p>
     <p>Неофициальный калькулятор, с HK Audio и L-Acoustics не связан.</p>`;
 }
@@ -1370,17 +1437,25 @@ function drawViews() {
   sv.innerHTML = sectionSVG(state, D, Math.max(320, sv.clientWidth));
   document.getElementById('secTitle').textContent = `Разрез по оси «${D.h.name}»`;
   document.getElementById('secNote').textContent = `${D.h.n} × ${MODELS[D.h.model].short} · верх ${fmt(D.h.z)} м · рама ${fmtDeg(D.h.tilt)} · поворот ${fmtDeg(D.h.az)}`;
+  const bandName = state.view.band === 'pink' ? 'широкая полоса' : (+state.view.band >= 1000 ? +state.view.band / 1000 + ' кГц' : state.view.band + ' Гц');
+  document.getElementById('levelNote').textContent = `все подвесы вместе · ${bandName} · 0 дБ — самое громкое место публики`;
   const lv = document.getElementById('levelView');
   lv.innerHTML = levelSVG(state, D, Math.max(320, lv.clientWidth));
   const av = document.getElementById('arrayView');
   av.innerHTML = arraySVG(D, Math.max(260, av.clientWidth));
   applyHighlight();
 }
-function update() {
-  V = derive();
+// Сначала быстрый расчёт с грубой картой, точная карта — когда ввод затих
+let fullTimer = null;
+function update(full = false) {
+  V = derive(!full);
   renderChips();
   drawViews();
   renderTable();
+  if (!full) {
+    clearTimeout(fullTimer);
+    fullTimer = setTimeout(() => update(true), 250);
+  }
   saveState();
 }
 
