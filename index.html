@@ -235,6 +235,8 @@ footer.notes p { margin: 0; }
 // Размеры — метры, углы — градусы.
 // profile — боковой профиль: [расстояние от фронта назад, полувысота]; шарнир между колонками — передняя кромка.
 // arc — раскрытие волнового фронта одной колонки по вертикали (0 — плоский фронт, как DOSC у L-Acoustics).
+// maxSpl — пиковый уровень одной колонки на 1 м в свободном поле (без пола), розовый шум. Где производитель
+// даёт полупространство (саб на полу), вычтено 6 дБ: отражение от пола калькулятор не считает.
 // hPatterns — диаграмма по горизонтали: полуугол −6 дБ влево и вправо (если смотреть со сцены в зал), gain — прибавка уровня.
 const MODELS = {
   cad208: {
@@ -247,6 +249,7 @@ const MODELS = {
     hPatterns: { '100': { label: '100°', left: 50, right: 50, gain: 0 } },
     hDefault: '100',
     band: [100, 18000],
+    maxSpl: 125, // 95 дБ 1 Вт/1 м + 1000 Вт пик
     weight: 17.5,
     splays: [0, 1.5, 3, 4.5, 6, 7.5, 9, 10.5, 12, 13.5, 15],
     frameSplays: [0, 1.5, 3, 4.5, 6, 7.5],
@@ -269,6 +272,7 @@ const MODELS = {
     },
     hDefault: '110',
     band: [55, 20000],
+    maxSpl: 140, // 142 дБ в пресете 70°; Panflex 70° добавляет свои +2 дБ
     weight: 26,
     splays: [0, 1, 2, 3, 4, 5, 7.5, 10],
     frameSplays: [0],
@@ -282,22 +286,22 @@ const MODELS = {
 const SUBS = {
   cad115: {
     label: 'HK Audio CAD 115 Sub', short: 'CAD 115', drivers: '1 × 15"',
-    W: 0.583, H: 0.573, D: 0.64, weight: 38, band: [45, 150],
+    W: 0.583, H: 0.573, D: 0.64, weight: 38, band: [45, 150], maxSpl: 129, // расчётный максимум, свободное поле
     source: 'CADIS Manual 1.0',
   },
   sb18: {
     label: 'L-Acoustics SB18', short: 'SB18', drivers: '1 × 18"',
-    W: 0.707, H: 0.553, D: 0.75, weight: 52, band: [32, 100],
+    W: 0.707, H: 0.553, D: 0.75, weight: 52, band: [32, 100], maxSpl: 132, // 138 дБ в полупространстве
     source: 'вес и полоса — L-Acoustics, размеры — спецификация Kara II/SB18 и каталог продавца',
   },
   ks28: {
     label: 'L-Acoustics KS28', short: 'KS28', drivers: '2 × 18"',
-    W: 1.34, H: 0.55, D: 0.719, weight: 79, band: [25, 100],
+    W: 1.34, H: 0.55, D: 0.719, weight: 79, band: [25, 100], maxSpl: 137, // 143 дБ в полупространстве
     source: 'официальная страница L-Acoustics',
   },
   sb28: {
     label: 'L-Acoustics SB28', short: 'SB28', drivers: '2 × 18"',
-    W: 1.30, H: 0.55, D: 0.70, weight: 93, band: [25, 100],
+    W: 1.30, H: 0.55, D: 0.70, weight: 93, band: [25, 100], maxSpl: 136, // 142 дБ, считаем как полупространство
     source: 'спецификация L-Acoustics SB28 (SP JP 6.0), пресет SB28_100',
   },
 };
@@ -476,7 +480,7 @@ function hangSources(h, arr, hang = 0) {
   const K = Math.max(1, Math.ceil(m.arc / 5));
   const ell = m.h / K;
   const R = m.arc > 0 ? m.h / (2 * Math.sin(rad(m.arc / 2))) : 0;
-  const gain = 10 ** ((pat.gain || 0) / 20) / K;
+  const gain = 10 ** ((pat.gain || 0) / 20) / K * calGain(m);
   const out = [];
   arr.boxes.forEach(b => {
     for (let j = 0; j < K; j++) {
@@ -509,7 +513,7 @@ function subBoxes(sb) {
 function subSources(sb, idx = 0) {
   const m = SUBS[sb.model];
   const a = rad(sb.az), ca = Math.cos(a), sa = Math.sin(a);
-  const g = 10 ** ((sb.gain || 0) / 20);
+  const g = 10 ** ((sb.gain || 0) / 20) * calGain(m);
   return subBoxes(sb).map(b => ({
     X: b.X, Y: b.Y, Z: b.Z, ca: b.rev ? -ca : ca, sa: b.rev ? -sa : sa, cp: 1, sp: 0, ell: 0,
     sub: true, gain: g, pol: (sb.pol < 0 ? -1 : 1) * (b.rev ? -1 : 1),
@@ -517,6 +521,17 @@ function subSources(sb, idx = 0) {
     delay: (sb.delay || 0) / 1000 + (b.rev ? m.D / C_SOUND : 0),
     band: m.band, sb: idx,
   }));
+}
+
+// Калибровка: розовый шум в рабочей полосе колонки даёт на оси на 1 м её паспортный максимум.
+// Тогда уровень на карте — оценка в дБ SPL при максимальной мощности, а не «относительно самого громкого места».
+const calCache = new Map();
+function calGain(m) {
+  if (!calCache.has(m)) {
+    const E = BROAD_SPEC.reduce((a, b) => a + b.steps.reduce((t, k) => t + bandPass(b.fc * k, m.band) ** 2, 0) / b.steps.length, 0);
+    calCache.set(m, 10 ** ((m.maxSpl - 10 * Math.log10(E)) / 20));
+  }
+  return calCache.get(m);
 }
 
 // Направленность по горизонтали: −6 дБ на краю паспортного раскрытия, своё для левой и правой стороны
@@ -776,8 +791,8 @@ function zoneImage(gz, L, ref) {
   ctx.putImageData(img, 0, 0);
   return c.toDataURL();
 }
-function mapLegend() {
-  return MAP_STOPS.map(([d]) => `<span><i style="background:${mapColor(d)}"></i>${d === 0 ? '0' : '−' + Math.abs(d)}</span>`).join('') + '<span>дБ</span>';
+function mapLegend(top) {
+  return MAP_STOPS.map(([d], k) => `<span><i style="background:${mapColor(d)}"></i>${k === 0 ? '≥ ' : ''}${Math.round(top + d)}</span>`).join('');
 }
 
 // Сетка с подписями в метрах
@@ -922,14 +937,15 @@ function levelSVG(st, V, W) {
   const { xMin, xMax } = sRange(V);
   const s = (W - pad.l - pad.r) / (xMax - xMin);
   const X = x => pad.l + (x - xMin) * s;
-  const rel = lv.map(p => p.L - V.ref);
-  const lo = Math.min(...rel);
-  const top = 1, bottom = Math.min(-6, Math.floor((lo - 1) / 3) * 3);
+  // ось в дБ SPL: от верха шкалы карты (или выше, если график выше) вниз минимум на 18 дБ
+  const rel = lv.map(p => p.L);
+  const lo = Math.min(...rel), hi = Math.max(...rel);
+  const top = Math.max(V.ref, Math.ceil(hi / 3) * 3) + 1, bottom = Math.min(V.ref - 18, Math.floor((lo - 1) / 3) * 3);
   const H = 160, Y = d => pad.t + (top - d) / (top - bottom) * (H - pad.t - pad.b);
   const out = [];
-  for (let d = 0; d >= bottom; d -= 3) {
-    out.push(`<line x1="${X(xMin)}" y1="${Y(d)}" x2="${X(xMax)}" y2="${Y(d)}" class="g${d === 0 ? ' gm' : ''}"/>`);
-    out.push(`<text x="${pad.l - 6}" y="${Y(d) + 4}" class="ax" text-anchor="end">${d === 0 ? '0' : '−' + Math.abs(d)}</text>`);
+  for (let d = Math.floor((top - 1) / 3) * 3; d >= bottom; d -= 3) {
+    out.push(`<line x1="${X(xMin)}" y1="${Y(d)}" x2="${X(xMax)}" y2="${Y(d)}" class="g${d === V.ref ? ' gm' : ''}"/>`);
+    out.push(`<text x="${pad.l - 6}" y="${Y(d) + 4}" class="ax" text-anchor="end">${d}</text>`);
   }
   for (let x = Math.ceil(xMin / 5) * 5; x <= xMax; x += 5)
     out.push(`<text x="${X(x)}" y="${H - 6}" class="ax" text-anchor="middle">${x}</text>`);
@@ -1003,7 +1019,7 @@ const EXAMPLE = () => ({
   ],
   sel: 0,
   subSel: 0,
-  view: { cones: true, band: 'pink', mono: false },
+  view: { cones: true, band: 'pink', mono: false, scaleTop: null },
   autoTilt: true,
 });
 
@@ -1035,6 +1051,7 @@ function sanitize(st) {
   st.room = { ...ex.room, ...(st.room || {}) };
   for (const k of ['L', 'W', 'H']) st.room[k] = num(st.room[k], ex.room[k]);
   st.view = { ...ex.view, ...(st.view || {}) };
+  if (typeof st.view.scaleTop !== 'number' || !Number.isFinite(st.view.scaleTop)) st.view.scaleTop = null;
   if (st.view.band !== 'pink' && !BAND_CHOICES.includes(+st.view.band)) st.view.band = 'pink';
   st.autoTilt = st.autoTilt !== false;
   st.hangs = (Array.isArray(st.hangs) && st.hangs.length ? st.hangs : ex.hangs).map(h => ({ ...h, id: h.id || newId('h') }));
@@ -1140,9 +1157,13 @@ function derive(fast = false) {
   const grid = zoneGrid(geo, fast ? 800 : 4000);
   const map = { points: grid.points, zones: grid.zones, L: pick(levelAt(grid.points, sources, spec, mono)) };
   const all = map.L.concat(secLv);
-  const ref = all.length ? Math.max(...all) : 0;
+  // Шкала закреплена: верх ставится один раз (при загрузке, смене частоты или по кнопке «Подогнать шкалу»),
+  // поэтому при перестановках цвета показывают, где стало громче или тише на самом деле
+  if (state.view.scaleTop == null && all.length) state.view.scaleTop = Math.ceil(Math.max(...all) / 3) * 3;
+  const ref = state.view.scaleTop ?? 0;
   sel.ref = ref;
-  return { geo, hangs, subs, selIdx: state.sel, subSel: state.subSel, sel, map, ref, mapStats: levelStats(map.L) };
+  const avg = map.L.length ? 10 * Math.log10(map.L.reduce((a, v) => a + 10 ** (v / 10), 0) / map.L.length) : null;
+  return { geo, hangs, subs, selIdx: state.sel, subSel: state.subSel, sel, map, ref, avg, mapStats: levelStats(map.L) };
 }
 
 // ---------- пульт ввода ----------
@@ -1337,7 +1358,11 @@ function setPath(path, raw) {
   const [head, ...rest] = path.split('.');
   const parse = () => { const v = parseFloat(String(raw).replace(',', '.')); return Number.isFinite(v) ? v : null; };
   if (head === 'autoTilt') { state.autoTilt = !!raw; return false; }
-  if (head === 'view') { state.view[rest[0]] = rest[0] === 'band' ? String(raw) : !!raw; return false; }
+  if (head === 'view') {
+    if (rest[0] === 'band') { state.view.band = String(raw); state.view.scaleTop = null; return false; }
+    state.view[rest[0]] = !!raw;
+    return false;
+  }
   if (head === 'room') { const v = parse(); if (v == null) return false; state.room[rest[0]] = clamp(v, ...LIMITS[path]); return false; }
   if (head === 'zones') {
     const z = state.zones[+rest[0]], f = rest[1];
@@ -1613,6 +1638,12 @@ document.addEventListener('change', e => {
   update();
 });
 
+document.addEventListener('click', e => {
+  if (!e.target.closest('#results [data-action="fitScale"]')) return;
+  state.view.scaleTop = null;
+  update(true);
+});
+
 // Подсветка одной колонки: наведение или тап по строке таблицы, колонке, лучу
 let hlIndex = null;
 function applyHighlight() {
@@ -1644,6 +1675,7 @@ function renderChips() {
   const out = [];
   if (V.mapStats) {
     const sp = V.mapStats.spread;
+    out.push(chip('Средний по публике', `${fmt(V.avg)} дБ`));
     out.push(chip('Разброс по всем зонам', `${fmt(sp)} дБ`, sp <= 6 ? 'ok' : sp <= 10 ? 'warn' : 'bad'));
   }
   if (cov) {
@@ -1666,7 +1698,8 @@ function renderNotes() {
   document.getElementById('notes').innerHTML = `
     <p>Расчёт геометрический. Луч — ось колонки из центра передней грани, точка — где ось упирается в публику, пол, стену или потолок. Конус — паспортное раскрытие колонки по вертикали (−6 дБ). Разрез строится по оси выбранного подвеса.</p>
     <p>Уровень считается с учётом фазы. Фронт каждой колонки линейного массива — излучающая полоса, сабвуфер — почти круговой источник со своей задержкой и полярностью. Внутри подвеса колонки и все сабы между собой складываются по давлению с фазой, поэтому видно, как массив при малых углах бьёт дальше, где интерферируют сабы и как работает кардиоид. Подвесы между собой — по энергии (стерео) или с фазой (галочка «Моно»), сабы с подвесами — по энергии. Розовый шум — 9 октав от 31,5 Гц до 8 кГц, низкие частоты 40–100 Гц можно смотреть третьоктавами. У каждой колонки — своя рабочая полоса со спадом 24 дБ/окт, есть поглощение в воздухе.</p>
-    <p>Не учитываются отражения, фаза фильтров кроссовера и частотная характеристика внутри полосы. Диаграммы — модель по паспорту и геометрии, а не замеры производителя: форма распределения близка к реальной, точные децибелы — нет. Уровень показан относительно самого громкого места публики.</p>
+    <p>Не учитываются отражения, фаза фильтров кроссовера и частотная характеристика внутри полосы. Диаграммы — модель по паспорту и геометрии, а не замеры производителя: форма распределения близка к реальной, точные децибелы — нет.</p>
+    <p>Уровень — оценка в дБ SPL: каждая колонка работает на своём паспортном максимуме (пик, розовый шум, свободное поле, без отражения от пола). Шкала карты закреплена, чтобы при перестановках цвет честно показывал, где стало громче или тише. «Подогнать шкалу» подстраивает её под текущий расчёт, при смене частоты она подгоняется сама.</p>
     <p>«Подобрать углы» ищет самый ровный уровень вдоль разреза без дыр в покрытии: верхняя колонка смотрит на дальний ряд, углы плавно растут книзу.</p>
     <p>Данные колонок: ${Object.values(MODELS).concat(Object.values(SUBS)).map(m => `${esc(m.label)} — ${esc(m.source)}`).join('; ')}. Рама нарисована схематично. Вес подвеса — колонки и рама, без лебёдок и кабеля. Безопасность подвеса проверяй по документации производителя.</p>
     <p>Неофициальный калькулятор, с HK Audio и L-Acoustics не связан.</p>`;
@@ -1675,13 +1708,14 @@ function renderNotes() {
 function drawViews() {
   const tv = document.getElementById('topView');
   tv.innerHTML = topSVG(state, V, Math.max(320, tv.clientWidth));
-  document.getElementById('mapLegend').innerHTML = V.map.L.length ? `<span class="lg-title">Уровень по зонам:</span>${mapLegend()}` : '';
+  document.getElementById('mapLegend').innerHTML = V.map.L.length
+    ? `<span class="lg-title">Уровень, дБ SPL:</span>${mapLegend(V.ref)}<button type="button" data-action="fitScale">Подогнать шкалу</button>` : '';
   const D = V.sel;
   const sv = document.getElementById('secView');
   sv.innerHTML = sectionSVG(state, D, Math.max(320, sv.clientWidth));
   document.getElementById('secTitle').textContent = `Разрез по оси «${D.h.name}»`;
   document.getElementById('secNote').textContent = `${D.h.n} × ${MODELS[D.h.model].short} · верх ${fmt(D.h.z)} м · рама ${fmtDeg(D.h.tilt)} · поворот ${fmtDeg(D.h.az)}`;
-  document.getElementById('levelNote').textContent = `все подвесы и сабы вместе · ${bandName(state.view.band)} · 0 дБ — самое громкое место публики`;
+  document.getElementById('levelNote').textContent = `все подвесы и сабы вместе · ${bandName(state.view.band)} · дБ SPL, оценка`;
   const lv = document.getElementById('levelView');
   lv.innerHTML = levelSVG(state, D, Math.max(320, lv.clientWidth));
   const av = document.getElementById('arrayView');
