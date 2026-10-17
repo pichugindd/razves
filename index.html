@@ -196,6 +196,14 @@ svg .hang .grab { fill: transparent; }
 svg .hang.sel .foot { stroke: var(--accent); stroke-width: 2.5; }
 svg .hang.sel .dir { stroke: var(--accent); }
 svg .hang.sel .dir-head { fill: var(--accent); }
+svg .subg { cursor: grab; touch-action: none; }
+svg .subg .foot { fill: var(--cabinet); fill-opacity: .55; stroke: var(--cabinet-edge); stroke-width: 1; stroke-dasharray: 3 2; }
+svg .subg .dir { stroke: var(--muted); stroke-width: 1.5; }
+svg .subg .dir-head { fill: var(--muted); }
+svg .subg .grab { fill: transparent; }
+svg .subg.sel .foot { stroke: var(--accent); stroke-width: 2; }
+svg .subg.sel .dir { stroke: var(--accent); }
+svg .subg.sel .dir-head { fill: var(--accent); }
 svg .hlbl { fill: var(--ink); font: 600 12px var(--f-display); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
 svg .dim { opacity: .12; }
 svg .cone.dim { opacity: .03; }
@@ -269,6 +277,31 @@ const MODELS = {
     source: 'размеры, вес и углы — спецификация L-Acoustics KARA II SPS EN 1.1; вес M-BUMP (24,5 кг) — по каталогу прокатчика, проверь в Soundvision',
   },
 };
+// ---------- сабвуферы ----------
+// W × H × D — ширина, высота, глубина корпуса, лёжа (как обычно ставят). band — рабочая полоса.
+const SUBS = {
+  cad115: {
+    label: 'HK Audio CAD 115 Sub', short: 'CAD 115', drivers: '1 × 15"',
+    W: 0.583, H: 0.573, D: 0.64, weight: 38, band: [45, 150],
+    source: 'CADIS Manual 1.0',
+  },
+  sb18: {
+    label: 'L-Acoustics SB18', short: 'SB18', drivers: '1 × 18"',
+    W: 0.707, H: 0.553, D: 0.75, weight: 52, band: [32, 100],
+    source: 'вес и полоса — L-Acoustics, размеры — спецификация Kara II/SB18 и каталог продавца',
+  },
+  ks28: {
+    label: 'L-Acoustics KS28', short: 'KS28', drivers: '2 × 18"',
+    W: 1.34, H: 0.55, D: 0.719, weight: 79, band: [25, 100],
+    source: 'официальная страница L-Acoustics',
+  },
+  sb28: {
+    label: 'L-Acoustics SB28', short: 'SB28', drivers: '2 × 18"',
+    W: 1.30, H: 0.55, D: 0.70, weight: 93, band: [25, 100],
+    source: 'каталог продавца',
+  },
+};
+
 // Зеркальная копия меняет «шире влево» на «шире вправо»
 const MIRROR_PATTERN = { '90L': '90R', '90R': '90L' };
 </script>
@@ -425,14 +458,17 @@ function coverage(h, arr, samples) {
 }
 </script>
 <script>
-// ---------- физика линейного массива ----------
-// Фронт каждой колонки — излучающая полоса высотой h. У колонки с рупором постоянной направленности
-// (CAD 208) фронт — дуга с раскрытием arc, у плоского фронта (DOSC, Kara II) дуги нет. Дугу делим на куски
-// по 5°, каждый кусок — прямая синфазная полоса со своей направленностью sin(x)/x.
-// Давление от всех кусков всех колонок всех подвесов складывается с учётом фазы (разности хода),
-// поэтому сами собой появляются сложение колонок, дальнобойность прямого участка и провалы интерференции.
-// Учитываем: затухание 1/r, поглощение в воздухе (20 °C, 50 %), паспортную диаграмму по горизонтали
-// (на низах она расширяется). Не учитываем: отражения, частотную характеристику и обработку колонок.
+// ---------- физика ----------
+// Линейный массив: фронт каждой колонки — излучающая полоса высотой h. У колонки с рупором постоянной
+// направленности (CAD 208) фронт — дуга с раскрытием arc, у плоского фронта (DOSC, Kara II) дуги нет. Дугу
+// делим на куски по 5°, каждый кусок — прямая синфазная полоса со своей направленностью sin(x)/x.
+// Сабвуфер: точечный источник в центре фронта, почти круговой (спереди на 4 дБ громче, чем сзади),
+// со своей задержкой и полярностью; развёрнутые назад корпуса — как в кардиоидной пачке.
+// Давление от всех источников складывается с учётом фазы (разности хода и задержек), поэтому сами собой
+// появляются сложение колонок, дальнобойность, интерференция сабов, кардиоид.
+// Учитываем: затухание 1/r, поглощение в воздухе (20 °C, 50 %), рабочую полосу колонки (спад 24 дБ/окт за
+// её краями), паспортную диаграмму по горизонтали (на низах шире). Не учитываем: отражения, фазу фильтров
+// кроссовера и частотную характеристику внутри полосы.
 function hangSources(h, arr, hang = 0) {
   const m = MODELS[h.model];
   const pat = m.hPatterns[h.pattern] || m.hPatterns[m.hDefault];
@@ -449,10 +485,38 @@ function hangSources(h, arr, hang = 0) {
       const back = R ? R * (1 - Math.cos(rad(dTilt))) : 0; // края дуги чуть позади середины
       const W = toWorld(h, { x: b.c.x + v * b.u.x - back * b.a.x, y: b.c.y + v * b.u.y - back * b.a.y });
       const phi = rad(b.phi + dTilt);
-      out.push({ X: W.X, Y: W.Y, Z: W.Z, ca, sa, cp: Math.cos(phi), sp: Math.sin(phi), ell, pat, gain, box: b.i, hang });
+      out.push({ X: W.X, Y: W.Y, Z: W.Z, ca, sa, cp: Math.cos(phi), sp: Math.sin(phi), ell, pat, gain, pol: 1, delay: 0, band: m.band, box: b.i, hang });
     }
   });
   return out;
+}
+
+// Корпуса пачки сабвуферов. Лёжа — друг на друге, стоя на боку — рядом поперёк оси.
+// Точка пачки (x, y) — середина передней грани, z — низ пачки. Развёрнутые назад — верхние (или крайние).
+function subBoxes(sb) {
+  const m = SUBS[sb.model];
+  const a = rad(sb.az), ca = Math.cos(a), sa = Math.sin(a);
+  const out = [];
+  for (let i = 0; i < sb.n; i++) {
+    const rev = i >= sb.n - sb.rev;
+    const lat = sb.orient === 'v' ? (i - (sb.n - 1) / 2) * m.H : 0;
+    const Z = sb.orient === 'v' ? sb.z + m.W / 2 : sb.z + (i + 0.5) * m.H;
+    const f = rev ? -m.D : 0; // у развёрнутого корпуса фронт — сзади пачки
+    out.push({ i, rev, lat, X: sb.x + f * ca - lat * sa, Y: sb.y + f * sa + lat * ca, Z });
+  }
+  return out;
+}
+function subSources(sb, idx = 0) {
+  const m = SUBS[sb.model];
+  const a = rad(sb.az), ca = Math.cos(a), sa = Math.sin(a);
+  const g = 10 ** ((sb.gain || 0) / 20);
+  return subBoxes(sb).map(b => ({
+    X: b.X, Y: b.Y, Z: b.Z, ca: b.rev ? -ca : ca, sa: b.rev ? -sa : sa, cp: 1, sp: 0, ell: 0,
+    sub: true, gain: g, pol: (sb.pol < 0 ? -1 : 1) * (b.rev ? -1 : 1),
+    // кардиоидный пресет: развёрнутый корпус задержан на глубину пачки и в обратной полярности
+    delay: (sb.delay || 0) / 1000 + (b.rev ? m.D / C_SOUND : 0),
+    band: m.band, sb: idx,
+  }));
 }
 
 // Направленность по горизонтали: −6 дБ на краю паспортного раскрытия, своё для левой и правой стороны
@@ -463,66 +527,95 @@ function hGain(beta, pat) {
   const n = Math.log(0.5) / Math.log(Math.cos(rad(half)));
   return Math.max(0.1, Math.cos(rad(b)) ** n);
 }
+const SUB_FRONT = 0.25; // саб: (1 + a·cos θ) / (1 + a) — спереди на ~4 дБ громче, чем сзади
 
-// Геометрия точки относительно источника: расстояние, угол от оси по горизонтали (плюс — влево)
-// и синус угла от оси по вертикали (плюс — ниже оси)
+// Геометрия точки относительно источника: расстояние, угол от оси по горизонтали (плюс — влево),
+// синус угла от оси по вертикали (плюс — ниже оси) и косинус угла от оси
 function relTo(s, P) {
   const dx = P.X - s.X, dy = P.Y - s.Y, dz = P.Z - s.Z;
   const fwd = dx * s.ca + dy * s.sa, lat = -dx * s.sa + dy * s.ca;
   const r = Math.hypot(fwd, lat, dz) || 1e-6;
   const along = fwd * s.cp - dz * s.sp;          // проекция на ось
   const up = fwd * s.sp + dz * s.cp;             // проекция на «верх»
-  return { r, beta: deg(Math.atan2(lat, along)), sinV: clamp(-up / r, -1, 1) };
+  return { r, beta: deg(Math.atan2(lat, along)), sinV: clamp(-up / r, -1, 1), cosT: along / r };
 }
 
-// Октавные полосы и частоты внутри полосы (равный шаг — фаза поворачивается без лишних синусов)
-const BANDS = [125, 250, 500, 1000, 2000, 4000, 8000];
-const FREQ_STEPS = [0.78, 0.92, 1.06, 1.2, 1.34];
+// Полосы. Широкая полоса (розовый шум) — 9 октав от 31,5 Гц до 8 кГц, равная энергия на октаву.
+// Отдельная полоса: на низах — треть октавы, выше 100 Гц — октава. Внутри полосы 5 частот с равным шагом
+// (фаза поворачивается без лишних синусов).
 const C_SOUND = 343;
-const AIR_DB_KM = { 125: 0.4, 250: 1.0, 500: 1.9, 1000: 3.7, 2000: 9.7, 4000: 32.8, 8000: 117 };
-const H_WIDEN = { 125: 0.15, 250: 0.35, 500: 0.7 }; // на низах диаграмма по горизонтали шире паспортной
+const OCT_STEPS = [0.78, 0.92, 1.06, 1.2, 1.34];
+const THIRD_STEPS = [0.9, 0.95, 1, 1.05, 1.1];
+const BROAD_SPEC = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000].map(fc => ({ fc, steps: OCT_STEPS }));
+const BAND_CHOICES = [40, 50, 63, 80, 100, 125, 250, 500, 1000, 2000, 4000, 8000];
+const bandSpec = choice => choice === 'pink' ? BROAD_SPEC : [{ fc: +choice, steps: +choice <= 100 ? THIRD_STEPS : OCT_STEPS }];
+const bandName = choice => choice === 'pink' ? 'розовый шум' : (+choice >= 1000 ? +choice / 1000 + ' кГц' : choice + ' Гц');
+// Поглощение в воздухе, дБ/км (ISO 9613-1, 20 °C, 50 %); между точками — по логарифмам
+const AIR_TABLE = [[31.5, 0.02], [63, 0.1], [125, 0.4], [250, 1.0], [500, 1.9], [1000, 3.7], [2000, 9.7], [4000, 32.8], [8000, 117]];
+function airDbKm(f) {
+  if (f <= AIR_TABLE[0][0]) return AIR_TABLE[0][1];
+  for (let i = 1; i < AIR_TABLE.length; i++) {
+    const [f1, a1] = AIR_TABLE[i];
+    if (f <= f1) {
+      const [f0, a0] = AIR_TABLE[i - 1], t = Math.log(f / f0) / Math.log(f1 / f0);
+      return Math.exp(Math.log(a0) + t * (Math.log(a1) - Math.log(a0)));
+    }
+  }
+  return AIR_TABLE[AIR_TABLE.length - 1][1];
+}
+// На низах диаграмма линейного массива по горизонтали шире паспортной
+const hWiden = f => f <= 63 ? 0.05 : f <= 125 ? 0.15 : f <= 250 ? 0.35 : f <= 500 ? 0.7 : 1;
+// Рабочая полоса колонки: спад 24 дБ/окт за краями
+const bandPass = (f, [lo, hi]) => 1 / Math.sqrt((1 + (lo / f) ** 8) * (1 + (f / hi) ** 8));
 
-// Уровень в точках, дБ относительно произвольного нуля: широкая полоса (розовый шум) и по октавам.
-// Внутри подвеса колонки всегда складываются с учётом фазы. Разные подвесы — по энергии (стерео, разный
-// сигнал слева и справа) или с учётом фазы, если mono = true (один и тот же сигнал во всех подвесах).
-function levelAt(points, sources, bands = BANDS, steps = FREQ_STEPS, mono = false) {
-  const NB = bands.length, NM = steps.length, dStep = NM > 1 ? steps[1] - steps[0] : 0;
-  const hangIds = [...new Set(sources.map(s => s.hang || 0))];
-  const NH = mono ? 1 : hangIds.length;
-  const slot = new Map(hangIds.map((id, k) => [id, mono ? 0 : k]));
-  const k0 = bands.map(f => 2 * Math.PI * f * steps[0] / C_SOUND);
-  const dk = bands.map(f => 2 * Math.PI * f * dStep / C_SOUND);
-  const air = bands.map(f => AIR_DB_KM[f] / 1000 * Math.LN10 / 20);
-  const widen = bands.map(f => H_WIDEN[f] || 1);
-  const re = new Float64Array(NH * NB * NM), im = new Float64Array(NH * NB * NM);
-  const out = { broad: new Float64Array(points.length), band: bands.map(() => new Float64Array(points.length)) };
+// Уровень в точках, дБ относительно произвольного нуля. Возвращает широкую полосу и каждую полосу отдельно.
+// С учётом фазы складываются: колонки внутри подвеса; все сабвуферы между собой (общий моно-сигнал);
+// подвесы между собой — только если mono = true. Остальные группы — по энергии.
+function levelAt(points, sources, spec = BROAD_SPEC, mono = false) {
+  const NB = spec.length, NM = spec[0].steps.length;
+  const freqs = spec.map(b => b.steps.map(k => b.fc * k));
+  const grpOf = s => s.sub ? 'subs' : (mono ? 'mains' : 'h' + (s.hang || 0));
+  const groups = [...new Set(sources.map(grpOf))];
+  const NG = groups.length || 1;
+  const slot = sources.map(s => groups.indexOf(grpOf(s)));
+  const air = spec.map(b => airDbKm(b.fc) / 1000 * Math.LN10 / 20);
+  const widen = spec.map(b => hWiden(b.fc));
+  // вес каждого источника на каждой частоте (рабочая полоса) — один раз на весь расчёт
+  const wts = sources.map(s => freqs.map(fs => fs.map(f => bandPass(f, s.band))));
+  const re = new Float64Array(NG * NB * NM), im = new Float64Array(NG * NB * NM);
+  const out = { broad: new Float64Array(points.length), band: spec.map(() => new Float64Array(points.length)) };
   points.forEach((P, pi) => {
     re.fill(0); im.fill(0);
-    for (const s of sources) {
-      const off = slot.get(s.hang || 0) * NB * NM;
+    sources.forEach((s, si) => {
+      const off = slot[si] * NB * NM;
       const g = relTo(s, P);
-      const lnH = Math.log(hGain(g.beta, s.pat));
-      const base = s.gain / g.r;
+      const rPh = g.r + C_SOUND * (s.delay || 0);    // задержка — как лишний путь
+      const lnDir = s.sub ? Math.log((1 + SUB_FRONT * g.cosT) / (1 + SUB_FRONT)) : Math.log(hGain(g.beta, s.pat));
+      const base = s.gain * (s.pol || 1) / g.r;
       const xPerHz = Math.PI * s.ell * g.sinV / C_SOUND;
       for (let b = 0; b < NB; b++) {
-        const amp = base * Math.exp(widen[b] * lnH - air[b] * g.r);
-        const dph = dk[b] * g.r, rr = Math.cos(dph), ri = -Math.sin(dph);
-        let cr = Math.cos(k0[b] * g.r), ci = -Math.sin(k0[b] * g.r);
-        let x = xPerHz * bands[b] * steps[0];
-        const dx = xPerHz * bands[b] * dStep;
-        for (let q = off + b * NM, e = q + NM; q < e; q++) {
-          const A = Math.abs(x) < 1e-6 ? amp : amp * Math.sin(x) / x;
+        const fs = freqs[b], w = wts[si][b];
+        const amp = base * Math.exp((s.sub ? 1 : widen[b]) * lnDir - air[b] * g.r);
+        const df = NM > 1 ? fs[1] - fs[0] : 0;
+        const dph = 2 * Math.PI * df * rPh / C_SOUND, rr = Math.cos(dph), ri = -Math.sin(dph);
+        const ph0 = 2 * Math.PI * fs[0] * rPh / C_SOUND;
+        let cr = Math.cos(ph0), ci = -Math.sin(ph0);
+        let x = xPerHz * fs[0];
+        const dx = xPerHz * df;
+        for (let m = 0; m < NM; m++) {
+          const q = off + b * NM + m;
+          const A = (Math.abs(x) < 1e-6 ? amp : amp * Math.sin(x) / x) * w[m];
           re[q] += A * cr; im[q] += A * ci;
           const t = cr * rr - ci * ri; ci = cr * ri + ci * rr; cr = t;
           x += dx;
         }
       }
-    }
+    });
     let tot = 0;
     for (let b = 0; b < NB; b++) {
       let e = 0;
-      for (let hh = 0; hh < NH; hh++)
-        for (let q = (hh * NB + b) * NM, end = q + NM; q < end; q++) e += re[q] * re[q] + im[q] * im[q];
+      for (let gI = 0; gI < NG; gI++)
+        for (let q = (gI * NB + b) * NM, end = q + NM; q < end; q++) e += re[q] * re[q] + im[q] * im[q];
       e /= NM;
       out.band[b][pi] = 10 * Math.log10(e || 1e-20);
       tot += e;
@@ -540,21 +633,23 @@ function levelStats(Ls) {
   return { max, min, mean, rms, spread: max - min };
 }
 
-// Сетка точек по всем зонам публики для карты уровня на виде сверху
-function zoneGrid(st, maxPts = 2400) {
+// Сетка точек по всем зонам публики для карты уровня на виде сверху.
+// У каждой зоны своя прямоугольная сетка nx × ny — карта рисуется картинкой с плавными переходами.
+function zoneGrid(st, maxPts = 4000) {
   const area = st.zones.reduce((a, z) => a + Math.max(0, z.x2 - z.x1) * Math.max(0, z.y2 - z.y1), 0);
-  if (!area) return { cell: 1, points: [] };
-  const cell = Math.max(0.25, Math.sqrt(area / maxPts));
-  const points = [];
+  if (!area) return { cell: 1, points: [], zones: [] };
+  const cell = Math.max(0.2, Math.sqrt(area / maxPts));
+  const points = [], zones = [];
   st.zones.forEach((zn, zi) => {
-    const nx = Math.max(1, Math.round((zn.x2 - zn.x1) / cell)), ny = Math.max(1, Math.round((zn.y2 - zn.y1) / cell));
+    const nx = Math.max(2, Math.round((zn.x2 - zn.x1) / cell)), ny = Math.max(2, Math.round((zn.y2 - zn.y1) / cell));
     const dx = (zn.x2 - zn.x1) / nx, dy = (zn.y2 - zn.y1) / ny;
-    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+    zones.push({ zi, nx, ny, start: points.length, x1: zn.x1, x2: zn.x2, y1: zn.y1, y2: zn.y2 });
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const X = zn.x1 + (i + 0.5) * dx, Y = zn.y1 + (j + 0.5) * dy;
       points.push({ zi, X, Y, Z: zoneZ(zn, X), dx, dy });
     }
   });
-  return { cell, points };
+  return { cell, points, zones };
 }
 
 // ---------- автоподбор углов ----------
@@ -562,11 +657,11 @@ function zoneGrid(st, maxPts = 2400) {
 // ряд (допуск — до 1,5 м выше ушей), углы к низу массива не уменьшаются и растут без резких скачков.
 // Старт — J-форма по геометрии, дальше перебор допустимых углов по одному стыку и перенос угла
 // между соседними стыками, пока есть улучшение.
-const AUTO_BANDS = [250, 1000, 4000], AUTO_STEPS = [0.85, 1, 1.15];
+const AUTO_SPEC = [250, 1000, 4000].map(fc => ({ fc, steps: [0.85, 1, 1.15] }));
 function autoScore(h, sec, samples) {
   const arr = computeArray(h);
   // для скорости — три октавы по три частоты; этого хватает, чтобы почувствовать сложение колонок
-  const Ls = levelAt(samples.map(p => secWorld(sec, p.s, p.z)), hangSources(h, arr), AUTO_BANDS, AUTO_STEPS).broad;
+  const Ls = levelAt(samples.map(p => secWorld(sec, p.s, p.z)), hangSources(h, arr), AUTO_SPEC).broad;
   const ls = levelStats(Ls);
   const gap = 1 - coverage(h, arr, samples).share;
   let J = ls.rms + 0.25 * ls.spread + 20 * gap;
@@ -656,16 +751,30 @@ const boxColor = (i, n) => `color-mix(in oklch, var(--ray-b) ${n > 1 ? Math.roun
 
 // Цвета карты уровня, шаг 3 дБ (0 дБ — самое громкое место публики)
 const MAP_STOPS = [[0, [253, 231, 37]], [-3, [122, 209, 81]], [-6, [34, 168, 132]], [-9, [42, 120, 142]], [-12, [65, 68, 135]], [-15, [68, 1, 84]]];
-function mapColor(d) {
-  if (d >= 0) return `rgb(${MAP_STOPS[0][1]})`;
+function mapRGB(d) {
+  if (d >= 0) return MAP_STOPS[0][1];
   for (let i = 1; i < MAP_STOPS.length; i++) {
     const [d1, c1] = MAP_STOPS[i];
     if (d >= d1) {
       const [d0, c0] = MAP_STOPS[i - 1], t = (d0 - d) / (d0 - d1);
-      return `rgb(${c0.map((v, k) => Math.round(v + (c1[k] - v) * t))})`;
+      return c0.map((v, k) => Math.round(v + (c1[k] - v) * t));
     }
   }
-  return `rgb(${MAP_STOPS[MAP_STOPS.length - 1][1]})`;
+  return MAP_STOPS[MAP_STOPS.length - 1][1];
+}
+const mapColor = d => `rgb(${mapRGB(d)})`;
+// Карта одной зоны — картинка nx × ny пикселей; при растяжении браузер плавно смешивает соседние клетки
+function zoneImage(gz, L, ref) {
+  const c = document.createElement('canvas');
+  c.width = gz.nx; c.height = gz.ny;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(gz.nx, gz.ny);
+  for (let j = 0; j < gz.ny; j++) for (let i = 0; i < gz.nx; i++) {
+    const [r, g, b] = mapRGB(L[gz.start + j * gz.nx + i] - ref);
+    const o = ((gz.ny - 1 - j) * gz.nx + i) * 4;   // в картинке Y идёт сверху вниз
+    img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return c.toDataURL();
 }
 function mapLegend() {
   return MAP_STOPS.map(([d]) => `<span><i style="background:${mapColor(d)}"></i>${d === 0 ? '0' : '−' + Math.abs(d)}</span>`).join('') + '<span>дБ</span>';
@@ -699,13 +808,9 @@ function topSVG(st, V, W) {
   const out = [];
   gridLines(out, X, Y, [xMin, xMax], [yMin, yMax], H, pad, w, s);
   // карта уровня
-  if (V.map && V.map.L) {
-    out.push('<g shape-rendering="crispEdges">');
-    V.map.points.forEach((p, k) => {
-      out.push(`<rect x="${(X(p.X - p.dx / 2)).toFixed(1)}" y="${(Y(p.Y + p.dy / 2)).toFixed(1)}" width="${(p.dx * s + 0.6).toFixed(1)}" height="${(p.dy * s + 0.6).toFixed(1)}" fill="${mapColor(V.map.L[k] - V.ref)}"/>`);
-    });
-    out.push('</g>');
-  }
+  if (V.map && V.map.L && V.map.zones) V.map.zones.forEach(gz => {
+    out.push(`<image href="${zoneImage(gz, V.map.L, V.ref)}" x="${X(gz.x1).toFixed(1)}" y="${Y(gz.y2).toFixed(1)}" width="${((gz.x2 - gz.x1) * s).toFixed(1)}" height="${((gz.y2 - gz.y1) * s).toFixed(1)}" preserveAspectRatio="none"/>`);
+  });
   out.push(`<rect x="${X(0)}" y="${Y(RW / 2)}" width="${L * s}" height="${RW * s}" class="room"/>`);
   out.push(`<text x="${X(0) - 6}" y="${Y(0)}" class="lbl" text-anchor="middle" transform="rotate(-90 ${X(0) - 6} ${Y(0)})">сцена</text>`);
   // зоны
@@ -719,6 +824,24 @@ function topSVG(st, V, W) {
     const e = secWorld(sd.sec, sd.sec.sMax, 0);
     out.push(`<line x1="${X(sd.h.x)}" y1="${Y(sd.h.y)}" x2="${X(e.X)}" y2="${Y(e.Y)}" class="cut"/>`);
   }
+  // пачки сабов: контур сверху, стрелка — куда смотрят, у развёрнутых назад — стрелка назад
+  (V.subs || []).forEach(d => {
+    const sb = d.s, m = SUBS[sb.model], a = rad(sb.az), ca = Math.cos(a), sa = Math.sin(a);
+    const P = (f, l) => ({ x: sb.x + f * ca - l * sa, y: sb.y + f * sa + l * ca });
+    const half = (sb.orient === 'v' ? sb.n * m.H : m.W) / 2;
+    const body = [P(0, half), P(0, -half), P(-m.D, -half), P(-m.D, half)];
+    const tip = P(0.9, 0), w1 = P(0.65, 0.15), w2 = P(0.65, -0.15);
+    const back = sb.rev ? `<line x1="${X(P(-m.D, 0).x)}" y1="${Y(P(-m.D, 0).y)}" x2="${X(P(-m.D - 0.6, 0).x)}" y2="${Y(P(-m.D - 0.6, 0).y)}" class="dir"/>` : '';
+    const lab = P(-m.D / 2, half + 0.5);
+    out.push(`<g class="subg${d.idx === V.subSel ? ' sel' : ''}" data-sub="${d.idx}">
+      <line x1="${X(sb.x)}" y1="${Y(sb.y)}" x2="${X(tip.x)}" y2="${Y(tip.y)}" class="dir"/>
+      <polygon points="${pts([tip, w1, w2], X, Y)}" class="dir-head"/>
+      ${back}
+      <polygon points="${pts(body, X, Y)}" class="foot"/>
+      <circle cx="${X(P(-m.D / 2, 0).x)}" cy="${Y(P(-m.D / 2, 0).y)}" r="14" class="grab"/>
+      <text x="${X(lab.x)}" y="${Y(lab.y) + 4}" class="hlbl" text-anchor="middle">${esc(sb.name)} ×${sb.n}</text>
+    </g>`);
+  });
   // подвесы: контур колонки сверху и стрелка направления
   V.hangs.forEach((d, i) => {
     const h = d.h, m = MODELS[h.model], a = rad(h.az), ca = Math.cos(a), sa = Math.sin(a);
@@ -874,7 +997,12 @@ const EXAMPLE = () => ({
     { id: 'hR', name: 'Правый', mirrorOf: 'hL' },
   ],
   zones: [{ id: 'z1', name: 'Партер', x1: 5, x2: 30, y1: -9, y2: 9, z: 1.7, rise: 0 }],
+  subs: [
+    { id: 'sL', name: 'Сабы Л', model: 'cad115', n: 2, orient: 'h', rev: 0, x: 1.5, y: 4, z: 0, az: 0, delay: 0, pol: 1, gain: 0, mirrorOf: null },
+    { id: 'sR', name: 'Сабы П', mirrorOf: 'sL' },
+  ],
   sel: 0,
+  subSel: 0,
   view: { cones: true, band: 'pink', mono: false },
   autoTilt: true,
 });
@@ -892,12 +1020,22 @@ function fitHang(h) {
   h.name = String(h.name || 'Подвес');
   return h;
 }
+function fitSub(sb) {
+  if (!SUBS[sb.model]) sb.model = 'cad115';
+  sb.n = clamp(Math.round(num(sb.n, 2)), 1, 12);
+  sb.orient = sb.orient === 'v' ? 'v' : 'h';
+  sb.rev = clamp(Math.round(num(sb.rev, 0)), 0, sb.n - 1);
+  for (const k of ['x', 'y', 'z', 'az', 'delay', 'gain']) sb[k] = num(sb[k], { x: 1.5, y: 0, z: 0, az: 0, delay: 0, gain: 0 }[k]);
+  sb.pol = sb.pol < 0 ? -1 : 1;
+  sb.name = String(sb.name || 'Сабы');
+  return sb;
+}
 function sanitize(st) {
   const ex = EXAMPLE();
   st.room = { ...ex.room, ...(st.room || {}) };
   for (const k of ['L', 'W', 'H']) st.room[k] = num(st.room[k], ex.room[k]);
   st.view = { ...ex.view, ...(st.view || {}) };
-  if (st.view.band !== 'pink' && !BANDS.includes(+st.view.band)) st.view.band = 'pink';
+  if (st.view.band !== 'pink' && !BAND_CHOICES.includes(+st.view.band)) st.view.band = 'pink';
   st.autoTilt = st.autoTilt !== false;
   st.hangs = (Array.isArray(st.hangs) && st.hangs.length ? st.hangs : ex.hangs).map(h => ({ ...h, id: h.id || newId('h') }));
   // зеркальная копия без исходника превращается в обычный подвес
@@ -910,6 +1048,12 @@ function sanitize(st) {
     x1: num(z.x1, 5), x2: num(z.x2, 20), y1: num(z.y1, -5), y2: num(z.y2, 5), z: num(z.z, 1.7), rise: num(z.rise, 0),
   }));
   st.sel = clamp(Math.round(num(st.sel, 0)), 0, st.hangs.length - 1);
+  st.subs = (Array.isArray(st.subs) ? st.subs : ex.subs).map(sb => ({ ...sb, id: sb.id || newId('s') }));
+  st.subs.forEach(sb => {
+    if (sb.mirrorOf && !st.subs.some(o => o.id === sb.mirrorOf && !o.mirrorOf)) sb.mirrorOf = null;
+    if (!sb.mirrorOf) fitSub(sb);
+  });
+  st.subSel = clamp(Math.round(num(st.subSel, 0)), 0, Math.max(0, st.subs.length - 1));
   return st;
 }
 // Перенос сохранённого расчёта из первой версии (один подвес, одна зона)
@@ -919,7 +1063,7 @@ function fromV1(o) {
     room: { L: num(o.roomL, 32), W: 20, H: num(o.roomH, 12) },
     hangs: [{ id: 'hL', name: 'Подвес', model: 'cad208', n: num(o.n, 8), x: 0, y: 0, z: num(o.topH, 7), az: 0, tilt: num(o.frameTilt, 0), angles: o.angles, pattern: '100', mirrorOf: null }],
     zones: [{ id: 'z1', name: 'Партер', x1: num(o.audStart, 5), x2: num(o.audEnd, 30), y1: -9, y2: 9, z: num(o.ear, 1.7), rise: num(o.rise, 0) }],
-    sel: 0, view: { cones: o.cones !== false }, autoTilt: o.autoTilt !== false,
+    subs: [], sel: 0, subSel: 0, view: { cones: o.cones !== false }, autoTilt: o.autoTilt !== false,
   };
 }
 function loadState() {
@@ -941,6 +1085,12 @@ function resolveHang(hg) {
   if (!hg.mirrorOf) return hg;
   const src = sourceOf(hg);
   return { ...src, id: hg.id, name: hg.name, mirrorOf: hg.mirrorOf, y: -src.y, az: -src.az, pattern: MIRROR_PATTERN[src.pattern] || src.pattern };
+}
+function subSourceOf(sb) { return sb.mirrorOf ? state.subs.find(o => o.id === sb.mirrorOf) : sb; }
+function resolveSub(sb) {
+  if (!sb.mirrorOf) return sb;
+  const src = subSourceOf(sb);
+  return { ...src, id: sb.id, name: sb.name, mirrorOf: sb.mirrorOf, y: -src.y, az: -src.az };
 }
 const normZone = z => ({ ...z, x1: Math.min(z.x1, z.x2), x2: Math.max(z.x1, z.x2), y1: Math.min(z.y1, z.y2), y2: Math.max(z.y1, z.y2) });
 
@@ -975,22 +1125,24 @@ function derive(fast = false) {
     arr.boxes.forEach(b => { b.hit = cast(b.c, b.phi, surf); });
     return { idx, h, arr, sec };
   });
-  const sources = hangs.flatMap(d => hangSources(d.h, d.arr, d.idx));
+  const subs = state.subs.map((sb, idx) => ({ idx, s: resolveSub(sb) }));
+  const sources = hangs.flatMap(d => hangSources(d.h, d.arr, d.idx)).concat(subs.flatMap(d => subSources(d.s, d.idx)));
   const sel = hangs[state.sel];
   const samples = sectionSamples(sel.sec);
   sel.cov = coverage(sel.h, sel.arr, samples);
-  // выбранная полоса: широкая (розовый шум) или одна октава
-  const pick = res => Array.from(state.view.band === 'pink' ? res.broad : res.band[BANDS.indexOf(+state.view.band)]);
+  // выбранная полоса: розовый шум (вся полоса) или одна полоса
+  const spec = bandSpec(state.view.band);
+  const pick = res => Array.from(state.view.band === 'pink' ? res.broad : res.band[0]);
   const mono = !!state.view.mono;
-  const secLv = pick(levelAt(samples.map(p => secWorld(sel.sec, p.s, p.z)), sources, BANDS, FREQ_STEPS, mono));
+  const secLv = pick(levelAt(samples.map(p => secWorld(sel.sec, p.s, p.z)), sources, spec, mono));
   sel.secL = samples.map((p, k) => ({ s: p.s, zi: p.zi, L: secLv[k] }));
   // пока подвес тащат мышью, карта считается грубее
-  const grid = zoneGrid(geo, fast ? 600 : 2400);
-  const map = { points: grid.points, L: pick(levelAt(grid.points, sources, BANDS, FREQ_STEPS, mono)) };
+  const grid = zoneGrid(geo, fast ? 800 : 4000);
+  const map = { points: grid.points, zones: grid.zones, L: pick(levelAt(grid.points, sources, spec, mono)) };
   const all = map.L.concat(secLv);
   const ref = all.length ? Math.max(...all) : 0;
   sel.ref = ref;
-  return { geo, hangs, selIdx: state.sel, sel, map, ref, mapStats: levelStats(map.L) };
+  return { geo, hangs, subs, selIdx: state.sel, subSel: state.subSel, sel, map, ref, mapStats: levelStats(map.L) };
 }
 
 // ---------- пульт ввода ----------
@@ -1013,6 +1165,58 @@ function stepper(path, label, step, hint = '', disabled = false) {
     </div>
     ${hint ? `<span class="hint">${hint}</span>` : ''}
   </div>`;
+}
+function subsControls() {
+  const tabs = state.subs.map((o, i) => `<button type="button" role="tab" aria-selected="${i === state.subSel}" class="tab${i === state.subSel ? ' on' : ''}" data-action="selSub" data-idx="${i}">${esc(o.name)}</button>`).join('');
+  let body = '<span class="hint">Пачек пока нет. Пачка — один или несколько корпусов, стоящих вместе</span>';
+  if (state.subs.length) {
+    const sb = state.subs[state.subSel], r = resolveSub(sb), mir = !!sb.mirrorOf;
+    const hasMirror = state.subs.some(o => o.mirrorOf === sb.id);
+    body = `
+      <div class="field">
+        <label for="f-s-name">Название</label>
+        <input type="text" id="f-s-name" data-path="s.name" class="text">
+      </div>
+      ${mir ? `<div class="mirror-note">Зеркальная копия «${esc(subSourceOf(sb).name)}»: меняется вместе с ней, Y и поворот — с обратным знаком.
+        <button type="button" data-action="unlinkSub">Отвязать</button></div>` : ''}
+      <div class="field">
+        <label for="f-s-model">Модель</label>
+        <select id="f-s-model" data-path="s.model"${mir ? ' disabled' : ''}>${Object.entries(SUBS).map(([k, v]) => `<option value="${k}">${esc(v.short)} · ${v.drivers.replace(/ /g, '')}</option>`).join('')}</select>
+      </div>
+      ${stepper('s.n', 'Корпусов в пачке', 1, '', mir)}
+      <div class="field">
+        <label for="f-s-orient">Как стоят</label>
+        <select id="f-s-orient" data-path="s.orient"${mir ? ' disabled' : ''}>
+          <option value="h">Лёжа</option>
+          <option value="v">Стоя на боку</option>
+        </select>
+        <span class="hint">Лёжа — корпуса друг на друге, стоя — рядом поперёк оси</span>
+      </div>
+      ${stepper('s.rev', 'Развёрнуто назад', 1, 'Кардиоид: верхние (или крайние) корпуса смотрят назад, задержка на глубину корпуса и инверсия — как в кардиоидном пресете', mir || r.n < 2)}
+      ${field('s.x', 'X', { disabled: mir, hint: 'X и Y — середина передней грани пачки; пачку можно двигать мышью на виде сверху' })}
+      ${field('s.y', 'Y', { disabled: mir })}
+      ${field('s.z', 'Z — низ', { disabled: mir, hint: '0 — на полу; для подвешенных — высота низа пачки' })}
+      ${field('s.az', 'Поворот', { unit: '°', step: 1, disabled: mir, hint: 'Плюс — влево, 0 — прямо в зал' })}
+      ${field('s.delay', 'Задержка', { unit: 'мс', step: 0.1, disabled: mir })}
+      <div class="field">
+        <label for="f-s-pol">Полярность</label>
+        <select id="f-s-pol" data-path="s.pol"${mir ? ' disabled' : ''}>
+          <option value="1">+ обычная</option>
+          <option value="-1">− инверсия</option>
+        </select>
+      </div>
+      ${field('s.gain', 'Уровень', { unit: 'дБ', step: 0.5, disabled: mir })}
+      <div class="quick">
+        ${!mir && !hasMirror ? '<button type="button" data-action="mirrorSub">Зеркальная копия</button>' : ''}
+        <button type="button" data-action="delSub">Удалить пачку</button>
+      </div>`;
+  }
+  return `<section class="group">
+      <h2>Сабвуферы</h2>
+      <div class="tabs" role="tablist">${tabs}<button type="button" class="tab add" data-action="addSub">+ Пачка</button></div>
+      ${body}
+      <span class="hint">Все сабы складываются между собой с учётом фазы — видно интерференцию, кардиоид и влияние задержек</span>
+    </section>`;
 }
 function renderControls() {
   const hg = state.hangs[state.sel], h = resolveHang(hg), m = MODELS[h.model];
@@ -1067,6 +1271,7 @@ function renderControls() {
         ${state.hangs.length > 1 ? '<button type="button" data-action="delHang">Удалить подвес</button>' : ''}
       </div>
     </section>
+    ${subsControls()}
     <section class="group">
       <h2>Зоны публики</h2>
       ${state.zones.map((z, k) => `<div class="zone-card">
@@ -1088,10 +1293,10 @@ function renderControls() {
     <section class="group">
       <h2>Вид</h2>
       <div class="field">
-        <label for="f-view-band">Полоса для карты</label>
+        <label for="f-view-band">Частота для карты</label>
         <select id="f-view-band" data-path="view.band">
           <option value="pink">Розовый шум</option>
-          ${BANDS.map(f => `<option value="${f}">${f >= 1000 ? f / 1000 + ' кГц' : f + ' Гц'}</option>`).join('')}
+          ${BAND_CHOICES.map(f => `<option value="${f}">${bandName(f)}</option>`).join('')}
         </select>
       </div>
       <label class="check"><input type="checkbox" id="f-mono" data-path="view.mono"> Моно: подвесы складываются с учётом фазы</label>
@@ -1107,6 +1312,7 @@ function renderControls() {
 function getPath(path) {
   const [head, ...rest] = path.split('.');
   if (head === 'h') return resolveHang(state.hangs[state.sel])[rest[0]];
+  if (head === 's') return state.subs.length ? resolveSub(state.subs[state.subSel])[rest[0]] : '';
   if (head === 'zones') return state.zones[+rest[0]][rest[1]];
   if (head === 'room') return state.room[rest[0]];
   if (head === 'view') return state.view[rest[0]];
@@ -1123,6 +1329,7 @@ function syncInputs() {
 const LIMITS = {
   'room.L': [3, 300], 'room.W': [2, 200], 'room.H': [2, 80],
   'h.n': [1, 24], 'h.x': [-30, 300], 'h.y': [-100, 100], 'h.z': [0.5, 60], 'h.az': [-180, 180], 'h.tilt': [-20, 20],
+  's.n': [1, 12], 's.rev': [0, 11], 's.x': [-30, 300], 's.y': [-100, 100], 's.z': [0, 60], 's.az': [-180, 180], 's.delay': [0, 300], 's.gain': [-40, 12],
   x1: [-30, 300], x2: [-30, 300], y1: [-100, 100], y2: [-100, 100], z: [0, 60], rise: [-30, 60],
 };
 // Возвращает true, если изменилась структура пульта (нужно перерисовать)
@@ -1138,6 +1345,19 @@ function setPath(path, raw) {
     const v = parse(); if (v == null) return false;
     z[f] = clamp(v, ...LIMITS[f]);
     return false;
+  }
+  if (head === 's') {
+    const sb = state.subs[state.subSel], f = rest[0];
+    if (!sb) return false;
+    if (f === 'name') { sb.name = String(raw); return false; }
+    if (sb.mirrorOf) return false;
+    if (f === 'model') { sb.model = raw; fitSub(sb); return false; }
+    if (f === 'orient') { sb.orient = raw; return false; }
+    if (f === 'pol') { sb.pol = +raw < 0 ? -1 : 1; return false; }
+    const v = parse(); if (v == null) return false;
+    sb[f] = clamp(v, ...LIMITS[path]);
+    fitSub(sb);
+    return f === 'n';
   }
   if (head === 'h') {
     const hg = state.hangs[state.sel], f = rest[0];
@@ -1157,7 +1377,7 @@ document.addEventListener('input', e => {
   const el = e.target.closest('#controls [data-path]');
   if (!el) return;
   const rebuild = setPath(el.dataset.path, el.type === 'checkbox' ? el.checked : el.value);
-  if (el.dataset.path === 'h.name' || /^zones\.\d+\.name$/.test(el.dataset.path)) refreshNames();
+  if (/^(h|s)\.name$|^zones\.\d+\.name$/.test(el.dataset.path)) refreshNames();
   if (rebuild) renderControls();
   update();
 });
@@ -1168,8 +1388,10 @@ document.addEventListener('change', e => {
 // Имена на вкладках подвесов меняются без перерисовки пульта, чтобы поле не теряло фокус
 function refreshNames() {
   document.querySelectorAll('#controls .tab[data-action="selHang"]').forEach(b => { b.textContent = state.hangs[+b.dataset.idx].name; });
+  document.querySelectorAll('#controls .tab[data-action="selSub"]').forEach(b => { b.textContent = state.subs[+b.dataset.idx].name; });
 }
 
+const mirroredSubName = n => n.endsWith(' Л') ? n.slice(0, -2) + ' П' : n.endsWith(' П') ? n.slice(0, -2) + ' Л' : `${n} (зеркало)`;
 const mirroredName = n => ({ 'Левый': 'Правый', 'Правый': 'Левый' })[n] || `${n} (зеркало)`;
 function unlinkHang(hg) {
   const r = resolveHang(hg);
@@ -1189,6 +1411,24 @@ document.addEventListener('click', e => {
   }
   if (!act) return;
   if (act === 'selHang') { state.sel = +b.dataset.idx; hideAuto(); }
+  else if (act === 'selSub') state.subSel = +b.dataset.idx;
+  else if (act === 'addSub') {
+    const base = state.subs.length ? resolveSub(state.subs[state.subSel]) : { model: 'cad115', n: 2, orient: 'h', rev: 0, x: 1.5, y: 0, z: 0, az: 0, delay: 0, pol: 1, gain: 0 };
+    state.subs.push(fitSub({ ...base, id: newId('s'), name: `Сабы ${state.subs.length + 1}`, mirrorOf: null, y: state.subs.length ? clamp(base.y - 2, -100, 100) : 0 }));
+    state.subSel = state.subs.length - 1;
+  } else if (act === 'mirrorSub') {
+    const sb = state.subs[state.subSel];
+    state.subs.push({ id: newId('s'), name: mirroredSubName(sb.name), mirrorOf: sb.id });
+    state.subSel = state.subs.length - 1;
+  } else if (act === 'unlinkSub') {
+    const sb = state.subs[state.subSel];
+    Object.assign(sb, { ...resolveSub(sb), mirrorOf: null });
+  } else if (act === 'delSub') {
+    const sb = state.subs[state.subSel];
+    state.subs.filter(o => o.mirrorOf === sb.id).forEach(o => Object.assign(o, { ...resolveSub(o), mirrorOf: null }));
+    state.subs.splice(state.subSel, 1);
+    state.subSel = clamp(state.subSel, 0, Math.max(0, state.subs.length - 1));
+  }
   else if (act === 'addHang') {
     const r = resolveHang(state.hangs[state.sel]);
     state.hangs.push({ ...r, angles: [...r.angles], id: newId('h'), name: `Подвес ${state.hangs.length + 1}`, mirrorOf: null, y: clamp(r.y - 3, -100, 100) });
@@ -1261,13 +1501,15 @@ function toRoom(e) {
 function bindTopView() {
   const box = document.getElementById('topView');
   box.addEventListener('pointerdown', e => {
-    const g = e.target.closest('[data-hang]');
+    const g = e.target.closest('[data-hang],[data-sub]');
     if (!g) return;
-    const i = +g.dataset.hang;
-    if (i !== state.sel) { state.sel = i; hideAuto(); renderControls(); update(); }
-    const p = toRoom(e), r = resolveHang(state.hangs[i]);
+    const isSub = g.dataset.sub != null;
+    const i = +(isSub ? g.dataset.sub : g.dataset.hang);
+    if (isSub && i !== state.subSel) { state.subSel = i; renderControls(); update(); }
+    if (!isSub && i !== state.sel) { state.sel = i; hideAuto(); renderControls(); update(); }
+    const p = toRoom(e), r = isSub ? resolveSub(state.subs[i]) : resolveHang(state.hangs[i]);
     if (!p) return;
-    drag = { i, dx: r.x - p.X, dy: r.y - p.Y, id: e.pointerId };
+    drag = { i, isSub, dx: r.x - p.X, dy: r.y - p.Y, id: e.pointerId };
     box.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
@@ -1275,7 +1517,8 @@ function bindTopView() {
     if (!drag || e.pointerId !== drag.id) return;
     const p = toRoom(e);
     if (!p) return;
-    const hg = state.hangs[drag.i], src = sourceOf(hg);
+    const hg = drag.isSub ? state.subs[drag.i] : state.hangs[drag.i];
+    const src = drag.isSub ? subSourceOf(hg) : sourceOf(hg);
     const x = clamp(Math.round((p.X + drag.dx) * 10) / 10, -30, 300), y = clamp(Math.round((p.Y + drag.dy) * 10) / 10, -100, 100);
     src.x = x;
     src.y = hg.mirrorOf ? -y : y;
@@ -1422,9 +1665,10 @@ function renderChips() {
 function renderNotes() {
   document.getElementById('notes').innerHTML = `
     <p>Расчёт геометрический. Луч — ось колонки из центра передней грани, точка — где ось упирается в публику, пол, стену или потолок. Конус — паспортное раскрытие колонки по вертикали (−6 дБ). Разрез строится по оси выбранного подвеса.</p>
-    <p>Уровень считается как у линейного массива: фронт каждой колонки — излучающая полоса, давление от всех колонок всех подвесов складывается с учётом фазы на 35 частотах от 100 Гц до 11 кГц, с поглощением в воздухе. Поэтому видно, как колонки при малых углах складываются в одну линию и бьют дальше, и где появляются провалы интерференции. Отражений, частотной характеристики и обработки колонок нет, а диаграммы — модель по паспорту и геометрии, а не замеры производителя: форма распределения близка к реальной, точные децибелы — нет. Уровень показан относительно самого громкого места публики.</p>
+    <p>Уровень считается с учётом фазы. Фронт каждой колонки линейного массива — излучающая полоса, сабвуфер — почти круговой источник со своей задержкой и полярностью. Внутри подвеса колонки и все сабы между собой складываются по давлению с фазой, поэтому видно, как массив при малых углах бьёт дальше, где интерферируют сабы и как работает кардиоид. Подвесы между собой — по энергии (стерео) или с фазой (галочка «Моно»), сабы с подвесами — по энергии. Розовый шум — 9 октав от 31,5 Гц до 8 кГц, низкие частоты 40–100 Гц можно смотреть третьоктавами. У каждой колонки — своя рабочая полоса со спадом 24 дБ/окт, есть поглощение в воздухе.</p>
+    <p>Не учитываются отражения, фаза фильтров кроссовера и частотная характеристика внутри полосы. Диаграммы — модель по паспорту и геометрии, а не замеры производителя: форма распределения близка к реальной, точные децибелы — нет. Уровень показан относительно самого громкого места публики.</p>
     <p>«Подобрать углы» ищет самый ровный уровень вдоль разреза без дыр в покрытии: верхняя колонка смотрит на дальний ряд, углы плавно растут книзу.</p>
-    <p>Данные колонок: ${Object.values(MODELS).map(m => `${esc(m.label)} — ${esc(m.source)}`).join('; ')}. Рама нарисована схематично. Вес подвеса — колонки и рама, без лебёдок и кабеля. Безопасность подвеса проверяй по документации производителя.</p>
+    <p>Данные колонок: ${Object.values(MODELS).concat(Object.values(SUBS)).map(m => `${esc(m.label)} — ${esc(m.source)}`).join('; ')}. Рама нарисована схематично. Вес подвеса — колонки и рама, без лебёдок и кабеля. Безопасность подвеса проверяй по документации производителя.</p>
     <p>Неофициальный калькулятор, с HK Audio и L-Acoustics не связан.</p>`;
 }
 
@@ -1437,8 +1681,7 @@ function drawViews() {
   sv.innerHTML = sectionSVG(state, D, Math.max(320, sv.clientWidth));
   document.getElementById('secTitle').textContent = `Разрез по оси «${D.h.name}»`;
   document.getElementById('secNote').textContent = `${D.h.n} × ${MODELS[D.h.model].short} · верх ${fmt(D.h.z)} м · рама ${fmtDeg(D.h.tilt)} · поворот ${fmtDeg(D.h.az)}`;
-  const bandName = state.view.band === 'pink' ? 'широкая полоса' : (+state.view.band >= 1000 ? +state.view.band / 1000 + ' кГц' : state.view.band + ' Гц');
-  document.getElementById('levelNote').textContent = `все подвесы вместе · ${bandName} · 0 дБ — самое громкое место публики`;
+  document.getElementById('levelNote').textContent = `все подвесы и сабы вместе · ${bandName(state.view.band)} · 0 дБ — самое громкое место публики`;
   const lv = document.getElementById('levelView');
   lv.innerHTML = levelSVG(state, D, Math.max(320, lv.clientWidth));
   const av = document.getElementById('arrayView');
