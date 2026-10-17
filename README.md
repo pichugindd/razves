@@ -2,7 +2,7 @@
 
 Калькулятор развеса линейных массивов: HK Audio CAD 208 и L-Acoustics Kara II.
 
-**Открыть:** https://pichguindd.github.io/razves/
+**Открыть:** https://pichugindd.github.io/razves/
 
 ## Что умеет
 
