@@ -2,7 +2,7 @@
 <html lang="ru">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Развес CAD 208</title>
+<title>Развес массивов</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -94,6 +94,27 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 .stepper button { width: 32px; padding: 6px 0; font-family: var(--f-data); }
 .quick { display: flex; flex-wrap: wrap; gap: 6px; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.tab.add { color: var(--accent); }
+input.text {
+  width: 168px; font: 500 14px var(--f-body); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px;
+}
+input:disabled, select:disabled, button:disabled { opacity: .55; cursor: not-allowed; }
+.mirror-note { font-size: 12px; color: var(--muted); display: grid; gap: 6px; padding: 8px 10px; border-radius: 4px; background: color-mix(in oklab, var(--accent) 8%, transparent); }
+.mirror-note button { justify-self: start; }
+.zone-card { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.zone-head { display: flex; gap: 6px; }
+.zone-head input.text { flex: 1; width: auto; min-width: 0; background: var(--panel); }
+.zone-head button { width: 32px; padding: 0; font-size: 16px; }
+.zone-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+.zone-grid label { display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.zone-grid input {
+  width: 100%; font: 500 13px var(--f-data); color: var(--ink); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 4px; padding: 5px 7px; text-align: right;
+}
+.legend .lg-title { color: var(--ink); font-weight: 500; }
 .auto { display: grid; gap: 8px; padding-top: 4px; }
 .auto button.primary { padding: 9px 12px; font-size: 14px; }
 .auto .hint { color: var(--muted); font-size: 12px; }
@@ -163,6 +184,19 @@ svg .cov2, .legend .cov2 { fill: var(--ok); background: var(--ok); }
 svg .lvl { fill: none; stroke: var(--audience); stroke-width: 2; stroke-linejoin: round; }
 svg .lvl-fill { fill: var(--audience); opacity: .1; }
 svg .lvl-mean { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; }
+svg .zone { fill: var(--audience); fill-opacity: .08; stroke: var(--audience); stroke-width: 1.5; }
+svg .zone.mapped { fill: none; }
+svg .zlbl { fill: var(--ink); font: 600 12px var(--f-display); letter-spacing: .03em; paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
+svg .cut { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 5; }
+svg .hang { cursor: grab; touch-action: none; }
+svg .hang .foot { fill: var(--cabinet); stroke: var(--cabinet-edge); stroke-width: 1; }
+svg .hang .dir { stroke: var(--muted); stroke-width: 2; }
+svg .hang .dir-head { fill: var(--muted); }
+svg .hang .grab { fill: transparent; }
+svg .hang.sel .foot { stroke: var(--accent); stroke-width: 2.5; }
+svg .hang.sel .dir { stroke: var(--accent); }
+svg .hang.sel .dir-head { fill: var(--accent); }
+svg .hlbl { fill: var(--ink); font: 600 12px var(--f-display); paint-order: stroke; stroke: var(--panel); stroke-width: 3px; }
 svg .dim { opacity: .12; }
 svg .cone.dim { opacity: .03; }
 svg [data-i] { cursor: pointer; transition: opacity .15s; }
@@ -176,8 +210,8 @@ footer.notes p { margin: 0; }
 
 <div class="wrap">
   <header class="top">
-    <h1>Развес CAD 208</h1>
-    <span class="sub">HK Audio CADIS · вид сбоку · одна сторона</span>
+    <h1>Развес линейных массивов</h1>
+    <span class="sub">HK Audio CAD 208 · L-Acoustics Kara II · вид сверху и разрез</span>
   </header>
 
   <div class="layout">
@@ -190,70 +224,78 @@ footer.notes p { margin: 0; }
 
 <script>
 // ---------- библиотека колонок ----------
-// Геометрия CAD 208 снята с чертежа HK Audio (DXF): фронт 238,2 мм, глубина 366,6 мм,
-// верх и низ скошены по 7,5°. profile = [расстояние от фронта назад, полувысота], метры.
+// Размеры — метры, углы — градусы.
+// profile — боковой профиль: [расстояние от фронта назад, полувысота]; шарнир между колонками — передняя кромка.
+// arc — раскрытие волнового фронта одной колонки по вертикали (0 — плоский фронт, как DOSC у L-Acoustics).
+// hPatterns — диаграмма по горизонтали: полуугол −6 дБ влево и вправо (если смотреть со сцены в зал), gain — прибавка уровня.
 const MODELS = {
   cad208: {
-    label: 'HK Audio CAD 208',
+    brand: 'HK Audio', label: 'HK Audio CAD 208', short: 'CAD 208',
     h: 0.2382,
     profile: [[0, 0.1191], [0.0295, 0.1165], [0.3650, 0.0724], [0.3666, 0.0624]],
+    width: 0.581,
     vDisp: 15,
-    hDisp: 100,
+    arc: 15,
+    hPatterns: { '100': { label: '100°', left: 50, right: 50, gain: 0 } },
+    hDefault: '100',
+    band: [100, 18000],
     weight: 17.5,
     splays: [0, 1.5, 3, 4.5, 6, 7.5, 9, 10.5, 12, 13.5, 15],
     frameSplays: [0, 1.5, 3, 4.5, 6, 7.5],
     maxBoxes: 24,
     frame: { label: 'CADIS Rigging Frame', weight: 11.5, maxLoad: 400, maxBoxes: 20, len: 0.45, thick: 0.05 },
+    source: 'размеры — чертёж HK Audio (DXF), углы и нагрузки — CADIS Manual 1.0',
+  },
+  kara2: {
+    brand: 'L-Acoustics', label: 'L-Acoustics Kara II', short: 'Kara II',
+    h: 0.252,
+    profile: [[0, 0.126], [0.03, 0.1235], [0.47, 0.085], [0.482, 0.081]],
+    width: 0.733,
+    vDisp: 10,
+    arc: 0,
+    hPatterns: {
+      '110': { label: 'Panflex 110°', left: 55, right: 55, gain: 0 },
+      '70': { label: 'Panflex 70°', left: 35, right: 35, gain: 2 },
+      '90L': { label: 'Panflex 90°, шире влево', left: 55, right: 35, gain: 1 },
+      '90R': { label: 'Panflex 90°, шире вправо', left: 35, right: 55, gain: 1 },
+    },
+    hDefault: '110',
+    band: [55, 20000],
+    weight: 26,
+    splays: [0, 1, 2, 3, 4, 5, 7.5, 10],
+    frameSplays: [0],
+    maxBoxes: 24,
+    frame: { label: 'M-BUMP', weight: 24.5, maxLoad: null, maxBoxes: 24, len: 0.75, thick: 0.08 },
+    source: 'размеры, вес и углы — спецификация L-Acoustics KARA II SPS EN 1.1; вес M-BUMP (24,5 кг) — по каталогу прокатчика, проверь в Soundvision',
   },
 };
-
-const EXAMPLE = {
-  model: 'cad208', n: 8, topH: 7, frameTilt: 3,
-  angles: [6, 1.5, 1.5, 3, 3, 4.5, 6, 6],
-  roomL: 32, roomH: 12, audStart: 5, audEnd: 30, ear: 1.7, rise: 0, cones: true, autoTilt: true,
-};
-const STORE_KEY = 'razves.v1';
-
-// ---------- состояние ----------
-function loadState() {
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { saved = null; }
-  const st = { ...EXAMPLE, angles: [...EXAMPLE.angles] };
-  if (saved && typeof saved === 'object') {
-    for (const k of Object.keys(EXAMPLE)) if (k in saved && typeof saved[k] === typeof EXAMPLE[k]) st[k] = saved[k];
-    if (!MODELS[st.model]) st.model = EXAMPLE.model;
-  }
-  fitAngles(st);
-  return st;
-}
-function saveState() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* хранилище недоступно — работаем без него */ }
-}
-function fitAngles(st) {
-  const m = MODELS[st.model];
-  st.n = Math.max(1, Math.min(m.maxBoxes, Math.round(st.n) || 1));
-  const a = Array.isArray(st.angles) ? st.angles.slice(0, st.n) : [];
-  while (a.length < st.n) a.push(0);
-  st.angles = a.map((v, i) => snap(+v || 0, i === 0 ? m.frameSplays : m.splays));
-}
+// Зеркальная копия меняет «шире влево» на «шире вправо»
+const MIRROR_PATTERN = { '90L': '90R', '90R': '90L' };
+</script>
+<script>
+// ---------- общая математика ----------
+const rad = d => d * Math.PI / 180;
+const deg = r => r * 180 / Math.PI;
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 function snap(v, list) {
   return list.reduce((best, x) => Math.abs(x - v) < Math.abs(best - v) ? x : best, list[0]);
 }
-let state = loadState();
 
-// ---------- геометрия ----------
-// Система координат: x — вперёд от передней грани массива к публике, y — вверх от пола. Углы: + вниз.
-const rad = d => d * Math.PI / 180;
-const deg = r => r * 180 / Math.PI;
+// ---------- координаты ----------
+// Зал: X — в глубину (0 — передняя стена у сцены, L — задняя стена), Y — поперёк
+// (плюс — слева, если смотреть со сцены в зал, 0 — середина), Z — высота от пола.
+// Подвес стоит в точке (x, y) — передняя верхняя точка первой колонки, z — её высота.
+// Плоскость подвеса: x — вперёд по оси подвеса от этой точки, y — высота. Углы наклона: плюс — вниз.
 
-function computeArray(st) {
-  const m = MODELS[st.model];
+// Массив в своей вертикальной плоскости
+function computeArray(h) {
+  const m = MODELS[h.model];
   const half = m.profile[0][1];
   const boxes = [];
-  let top = { x: 0, y: st.topH };
-  let phi = st.frameTilt;
-  for (let i = 0; i < st.n; i++) {
-    phi += st.angles[i];
+  let top = { x: 0, y: h.z };
+  let phi = h.tilt;
+  for (let i = 0; i < h.n; i++) {
+    phi += h.angles[i];
     const r = rad(phi);
     const a = { x: Math.cos(r), y: -Math.sin(r) };   // ось колонки
     const u = { x: Math.sin(r), y: Math.cos(r) };    // «верх» колонки
@@ -267,7 +309,7 @@ function computeArray(st) {
     boxes.push({ i, phi, a, u, c, top, bottom, poly });
     top = bottom; // передний шарнир: низ этой колонки = верх следующей
   }
-  const r0 = rad(st.frameTilt);
+  const r0 = rad(h.tilt);
   const fa = { x: Math.cos(r0), y: -Math.sin(r0) }, fu = { x: Math.sin(r0), y: Math.cos(r0) };
   const F = boxes[0].top, f = m.frame;
   const frame = [
@@ -285,16 +327,54 @@ function computeArray(st) {
   };
 }
 
-// ---------- лучи ----------
-// Поверхности зала, в которые может упереться луч: публика, пол, задняя стена, потолок
-function surfaces(st) {
-  const L = st.roomL, H = st.roomH;
-  const x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
-  const list = [];
-  if (x2 > x1) list.push({ kind: 'aud', p: { x: x1, y: st.ear }, q: { x: x2, y: st.ear + st.rise } });
-  list.push({ kind: 'floor', p: { x: -50, y: 0 }, q: { x: L, y: 0 } });
-  list.push({ kind: 'wall', p: { x: L, y: 0 }, q: { x: L, y: H } });
-  list.push({ kind: 'ceil', p: { x: -50, y: H }, q: { x: L, y: H } });
+// Точка плоскости подвеса → координаты зала
+function toWorld(h, p) {
+  const a = rad(h.az);
+  return { X: h.x + p.x * Math.cos(a), Y: h.y + p.x * Math.sin(a), Z: p.y };
+}
+
+// ---------- разрез по оси подвеса ----------
+// Вертикальная плоскость через точку подвеса по его горизонтальному направлению.
+// segs — куски зон публики, которые попали в разрез: s — расстояние от подвеса по оси, z — высота ушей.
+function sectionOf(st, h) {
+  const a = rad(h.az), cx = Math.cos(a), cy = Math.sin(a);
+  const { L, W, H } = st.room;
+  let sMax = 300;
+  if (cx > 1e-9) sMax = Math.min(sMax, (L - h.x) / cx);
+  if (cx < -1e-9) sMax = Math.min(sMax, -h.x / cx);
+  if (cy > 1e-9) sMax = Math.min(sMax, (W / 2 - h.y) / cy);
+  if (cy < -1e-9) sMax = Math.min(sMax, (-W / 2 - h.y) / cy);
+  sMax = Math.max(0.5, sMax);
+  // s, при которых v0 + s·d лежит в [lo, hi]
+  const range = (v0, d, lo, hi) => {
+    if (Math.abs(d) < 1e-9) return v0 >= lo && v0 <= hi ? [-Infinity, Infinity] : null;
+    const s1 = (lo - v0) / d, s2 = (hi - v0) / d;
+    return [Math.min(s1, s2), Math.max(s1, s2)];
+  };
+  const segs = [];
+  st.zones.forEach((zn, zi) => {
+    const rx = range(h.x, cx, zn.x1, zn.x2), ry = range(h.y, cy, zn.y1, zn.y2);
+    if (!rx || !ry) return;
+    const sa = Math.max(0, rx[0], ry[0]), sb = Math.min(sMax, rx[1], ry[1]);
+    if (sb - sa < 0.05) return;
+    const zAt = s => zoneZ(zn, h.x + s * cx);
+    segs.push({ zi, name: zn.name, sa, sb, za: zAt(sa), zb: zAt(sb), zAt });
+  });
+  return { sMax, H, segs, cx, cy, h };
+}
+// Высота ушей в зоне на глубине X: подъём идёт от начала зоны к концу
+function zoneZ(zn, X) {
+  return zn.z + zn.rise * clamp((X - zn.x1) / Math.max(1e-6, zn.x2 - zn.x1), 0, 1);
+}
+// Точка разреза → координаты зала
+const secWorld = (sec, s, z) => ({ X: sec.h.x + s * sec.cx, Y: sec.h.y + s * sec.cy, Z: z });
+
+// Поверхности разреза, в которые может упереться луч: зоны публики, пол, стена, потолок
+function surfaces(sec) {
+  const list = sec.segs.map(g => ({ kind: 'aud', name: g.name, p: { x: g.sa, y: g.za }, q: { x: g.sb, y: g.zb } }));
+  list.push({ kind: 'floor', p: { x: -50, y: 0 }, q: { x: sec.sMax, y: 0 } });
+  list.push({ kind: 'wall', p: { x: sec.sMax, y: 0 }, q: { x: sec.sMax, y: sec.H } });
+  list.push({ kind: 'ceil', p: { x: -50, y: sec.H }, q: { x: sec.sMax, y: sec.H } });
   return list;
 }
 function cast(o, phiDeg, surf) {
@@ -308,437 +388,401 @@ function cast(o, phiDeg, surf) {
     const t = (w.x * e.y - w.y * e.x) / den;
     const u = (w.x * d.y - w.y * d.x) / den;
     if (t > 1e-6 && u >= -1e-9 && u <= 1 + 1e-9 && (!best || t < best.t))
-      best = { t, kind: s.kind, x: o.x + t * d.x, y: o.y + t * d.y };
+      best = { t, kind: s.kind, name: s.name, x: o.x + t * d.x, y: o.y + t * d.y };
   }
   return best;
 }
-// Точка прицела оси: где ось пересекает уровень ушей (продлённую линию публики).
-// Если ось уходит выше последнего ряда — где она упирается в стену или потолок.
-function aimPoint(o, phiDeg, st, surf) {
-  const L = st.roomL, x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
-  if (x2 > x1) {
-    const p = { x: x1, y: st.ear }, q = { x: x2, y: st.ear + st.rise };
-    const r = rad(phiDeg), d = { x: Math.cos(r), y: -Math.sin(r) }, e = { x: q.x - p.x, y: q.y - p.y };
-    const den = d.x * e.y - d.y * e.x;
-    if (Math.abs(den) > 1e-12) {
-      const w = { x: p.x - o.x, y: p.y - o.y };
-      const t = (w.x * e.y - w.y * e.x) / den;
-      const x = o.x + t * d.x, y = o.y + t * d.y;
-      if (t > 1e-6 && x <= x2 + 1e-9 && y >= 0) return { t, x, y, kind: x < x1 - 1e-9 ? 'front' : 'aud' };
+
+// Точки публики вдоль разреза (на уровне ушей)
+function sectionSamples(sec, maxN = 300) {
+  const total = sec.segs.reduce((a, g) => a + g.sb - g.sa, 0);
+  if (!total) return [];
+  const step = Math.max(0.1, total / maxN);
+  const out = [];
+  sec.segs.forEach(g => {
+    const N = Math.max(2, Math.ceil((g.sb - g.sa) / step));
+    for (let k = 0; k <= N; k++) {
+      const s = g.sa + (g.sb - g.sa) * k / N;
+      out.push({ s, z: g.zAt(s), zi: g.zi });
     }
-  }
-  return cast(o, phiDeg, surf);
-}
-// Куда смотрит ось — словами, для таблицы. Если ось уходит выше публики, считаем,
-// на сколько она проходит над ушами последнего ряда: до 1,5 м — нормальный прицел на последний ряд.
-function describeHit(b, st) {
-  const h = b.hit;
-  if (!h) return { text: 'мимо зала', cls: 'bad' };
-  if (h.kind === 'aud') return { text: `публика, ${fmt(h.x)} м`, cls: 'ok' };
-  if (h.kind === 'front') return { text: `до 1-го ряда, ${fmt(h.x)} м`, cls: 'warn' };
-  const x2 = Math.min(st.audEnd, st.roomL);
-  const over = b.c.y - (x2 - b.c.x) * Math.tan(rad(b.phi)) - (st.ear + st.rise);
-  const cls = over >= 0 && over <= 1.5 ? 'ok' : over > 3 || h.kind === 'ceil' ? 'bad' : 'warn';
-  return { text: `над последним рядом +${fmt(Math.max(0, over))} м`, cls };
-}
-// Покрытие публики: точка на уровне ушей покрыта, если видна колонкой в пределах её паспортного
-// вертикального раскрытия (−6 дБ). Шаг выборки — 10 см.
-function coverage(st, arr) {
-  const m = MODELS[st.model], L = st.roomL;
-  const x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
-  if (x2 <= x1) return null;
-  const N = Math.max(20, Math.ceil((x2 - x1) / 0.1));
-  const samples = [];
-  for (let k = 0; k <= N; k++) {
-    const x = x1 + (x2 - x1) * k / N, y = st.ear + st.rise * k / N;
-    const who = arr.boxes.filter(b => Math.abs(deg(Math.atan2(b.c.y - y, x - b.c.x)) - b.phi) <= m.vDisp / 2 + 1e-9).map(b => b.i);
-    samples.push({ x, y, who });
-  }
-  const gaps = [];
-  samples.forEach((s, k) => {
-    if (s.who.length) return;
-    const last = gaps[gaps.length - 1];
-    if (last && last.k === k - 1) { last.to = s.x; last.k = k; } else gaps.push({ from: s.x, to: s.x, k });
   });
-  return {
-    samples, gaps,
-    share: samples.filter(s => s.who.length).length / samples.length,
-    first: samples[0], last: samples[samples.length - 1],
-  };
+  return out.sort((a, b) => a.s - b.s);
 }
 
-// ---------- уровень звука (приблизительно) ----------
-// Каждая колонка — точечный источник с паспортной диаграммой по вертикали: −6 дБ на краю раскрытия,
-// дальше спад по параболе в дБ, не ниже −35 дБ. Колонки складываются по энергии, без интерференции,
-// затухание 1/r². Абсолютный уровень не считаем: показываем разницу между местами в зале.
+// Покрытие по паспортному раскрытию: точка покрыта, если видна колонкой в пределах ±vDisp/2 от её оси
+function coverage(h, arr, samples) {
+  if (!samples.length) return null;
+  const half = MODELS[h.model].vDisp / 2;
+  const marked = samples.map(p => ({
+    ...p,
+    who: arr.boxes.filter(b => Math.abs(deg(Math.atan2(b.c.y - p.z, p.s - b.c.x)) - b.phi) <= half + 1e-9).map(b => b.i),
+  }));
+  return {
+    samples: marked,
+    share: marked.filter(p => p.who.length).length / marked.length,
+    first: marked[0], last: marked[marked.length - 1],
+  };
+}
+</script>
+<script>
+// ---------- источники звука ----------
+// Каждая колонка — источник в центре передней грани, в координатах зала, со своим наклоном и поворотом.
+function hangSources(h, arr) {
+  const m = MODELS[h.model];
+  const pat = m.hPatterns[h.pattern] || m.hPatterns[m.hDefault];
+  const a = rad(h.az);
+  return arr.boxes.map(b => {
+    const W = toWorld(h, b.c);
+    const p = rad(b.phi);
+    return {
+      X: W.X, Y: W.Y, Z: W.Z, ca: Math.cos(a), sa: Math.sin(a), cp: Math.cos(p), sp: Math.sin(p),
+      m, pat, gain: 10 ** ((pat.gain || 0) / 20),
+    };
+  });
+}
+
+// Направленность по горизонтали: −6 дБ на краю паспортного раскрытия, своё для левой и правой стороны
+function hGain(beta, pat) {
+  const b = Math.abs(beta);
+  if (b >= 90) return 0.1;
+  const half = beta >= 0 ? pat.left : pat.right;
+  const n = Math.log(0.5) / Math.log(Math.cos(rad(half)));
+  return Math.max(0.1, Math.cos(rad(b)) ** n);
+}
+// Направленность по вертикали одной колонки: −6 дБ на краю раскрытия, дальше спад, не ниже −35 дБ
 function offAxisDb(theta, half) {
   const t = Math.abs(theta);
   if (t <= 2 * half) return -6 * (t / half) ** 2;
   return Math.max(-35, -24 - 0.5 * (t - 2 * half));
 }
-function audienceSamples(st, maxN = 160) {
-  const L = st.roomL, x1 = Math.min(st.audStart, L), x2 = Math.min(st.audEnd, L);
-  if (x2 <= x1) return [];
-  const N = Math.min(maxN, Math.max(20, Math.ceil((x2 - x1) / 0.2)));
-  return Array.from({ length: N + 1 }, (_, k) => ({ x: x1 + (x2 - x1) * k / N, y: st.ear + st.rise * k / N }));
+
+// Геометрия точки относительно источника: расстояние, угол от оси по горизонтали (плюс — влево)
+// и синус угла от оси по вертикали (плюс — ниже оси)
+function relTo(s, P) {
+  const dx = P.X - s.X, dy = P.Y - s.Y, dz = P.Z - s.Z;
+  const fwd = dx * s.ca + dy * s.sa, lat = -dx * s.sa + dy * s.ca;
+  const r = Math.hypot(fwd, lat, dz) || 1e-6;
+  const along = fwd * s.cp - dz * s.sp;          // проекция на ось колонки
+  const up = fwd * s.sp + dz * s.cp;             // проекция на «верх» колонки
+  return { r, beta: deg(Math.atan2(lat, along)), sinV: clamp(-up / r, -1, 1) };
 }
-function levels(st, boxes, samples) {
-  const half = MODELS[st.model].vDisp / 2;
-  return samples.map(p => {
-    let I = 0, covered = false;
-    for (const b of boxes) {
-      const dx = p.x - b.c.x, dy = b.c.y - p.y;
-      const th = deg(Math.atan2(dy, dx)) - b.phi;
-      if (Math.abs(th) <= half + 1e-9) covered = true;
-      I += 10 ** (offAxisDb(th, half) / 10) / (dx * dx + dy * dy);
+
+// Уровень в точках, дБ (без привязки к абсолютному значению).
+// Сейчас: сложение по энергии, затухание 1/r², паспортные диаграммы.
+function levelAt(points, sources) {
+  return points.map(P => {
+    let I = 0;
+    for (const s of sources) {
+      const g = relTo(s, P);
+      const v = offAxisDb(deg(Math.asin(g.sinV)), s.m.vDisp / 2);
+      const hg = hGain(g.beta, s.pat) * s.gain;
+      I += hg * hg * 10 ** (v / 10) / (g.r * g.r);
     }
-    return { x: p.x, y: p.y, L: 10 * Math.log10(I), covered };
+    return 10 * Math.log10(I || 1e-12);
   });
 }
-function levelStats(lv) {
-  const Ls = lv.map(s => s.L);
+
+function levelStats(Ls) {
+  if (!Ls.length) return null;
   const max = Math.max(...Ls), min = Math.min(...Ls);
   const mean = Ls.reduce((a, b) => a + b, 0) / Ls.length;
   const rms = Math.sqrt(Ls.reduce((a, b) => a + (b - mean) ** 2, 0) / Ls.length);
-  return { max, min, mean, rms, spread: max - min, gap: lv.filter(s => !s.covered).length / lv.length };
+  return { max, min, mean, rms, spread: max - min };
+}
+
+// Сетка точек по всем зонам публики для карты уровня на виде сверху
+function zoneGrid(st, maxPts = 2400) {
+  const area = st.zones.reduce((a, z) => a + Math.max(0, z.x2 - z.x1) * Math.max(0, z.y2 - z.y1), 0);
+  if (!area) return { cell: 1, points: [] };
+  const cell = Math.max(0.25, Math.sqrt(area / maxPts));
+  const points = [];
+  st.zones.forEach((zn, zi) => {
+    const nx = Math.max(1, Math.round((zn.x2 - zn.x1) / cell)), ny = Math.max(1, Math.round((zn.y2 - zn.y1) / cell));
+    const dx = (zn.x2 - zn.x1) / nx, dy = (zn.y2 - zn.y1) / ny;
+    for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) {
+      const X = zn.x1 + (i + 0.5) * dx, Y = zn.y1 + (j + 0.5) * dy;
+      points.push({ zi, X, Y, Z: zoneZ(zn, X), dx, dy });
+    }
+  });
+  return { cell, points };
 }
 
 // ---------- автоподбор углов ----------
-// Цель: ровный уровень по публике без дыр в покрытии. Верхняя колонка смотрит на последний ряд
-// (допуск — до 1,5 м выше ушей), углы к низу массива по возможности не уменьшаются (J-форма).
-// Старт — J-форма по геометрии, дальше перебор допустимых углов по одному стыку, пока есть улучшение.
-function autoScore(st, samples) {
-  const arr = computeArray(st);
-  const ls = levelStats(levels(st, arr.boxes, samples));
-  let J = ls.rms + 0.25 * ls.spread + 20 * ls.gap;
-  for (let i = 2; i < st.n; i++) {
-    J += 0.15 * Math.max(0, st.angles[i - 1] - st.angles[i]);                         // углы книзу не уменьшаются
-    J += 0.05 * Math.max(0, Math.abs(st.angles[i] - st.angles[i - 1]) - 1.5) ** 2;    // без резких скачков
+// Цель: ровный уровень по публике в разрезе подвеса без дыр в покрытии. Верхняя колонка смотрит на дальний
+// ряд (допуск — до 1,5 м выше ушей), углы к низу массива не уменьшаются и растут без резких скачков.
+// Старт — J-форма по геометрии, дальше перебор допустимых углов по одному стыку и перенос угла
+// между соседними стыками, пока есть улучшение.
+function autoScore(h, sec, samples) {
+  const arr = computeArray(h);
+  const Ls = levelAt(samples.map(p => secWorld(sec, p.s, p.z)), hangSources(h, arr));
+  const ls = levelStats(Ls);
+  const gap = 1 - coverage(h, arr, samples).share;
+  let J = ls.rms + 0.25 * ls.spread + 20 * gap;
+  for (let i = 2; i < h.n; i++) {
+    J += 0.15 * Math.max(0, h.angles[i - 1] - h.angles[i]);
+    J += 0.05 * Math.max(0, Math.abs(h.angles[i] - h.angles[i - 1]) - 1.5) ** 2;
   }
   const b = arr.boxes[0], last = samples[samples.length - 1];
-  const over = b.c.y - (last.x - b.c.x) * Math.tan(rad(b.phi)) - last.y;
+  const over = b.c.y - (last.s - b.c.x) * Math.tan(rad(b.phi)) - last.z;
   if (over > 1.5) J += 2 * (over - 1.5);
   if (over < -0.5) J += 2 * (-0.5 - over);
   return J;
 }
-function autoSplay(st0) {
-  const m = MODELS[st0.model];
-  const st = { ...st0, angles: [...st0.angles] };
-  const samples = audienceSamples(st, 80);
-  if (!samples.length) return null;
-  const n = st.n, first = samples[0], last = samples[samples.length - 1];
-  // стартовая J-форма: верх — на последний ряд, низ — на первый, углы растут книзу
-  const phiTop = deg(Math.atan2(st.topH - m.h / 2 - last.y, last.x));
-  const phiBot = deg(Math.atan2(st.topH - (n - 0.5) * m.h - first.y, first.x));
-  if (st.autoTilt) st.frameTilt = Math.max(-20, Math.min(20, Math.round((phiTop - st.angles[0]) * 2) / 2));
-  else st.angles[0] = snap(phiTop - st.frameTilt, m.frameSplays);
-  let cur = st.frameTilt + st.angles[0];
+function autoSplay(st, h0, autoTilt) {
+  const m = MODELS[h0.model];
+  const h = { ...h0, angles: [...h0.angles] };
+  const sec = sectionOf(st, h);
+  const all = sectionSamples(sec);
+  if (!all.length) return null;
+  const samples = all.filter((_, k) => k % Math.max(1, Math.floor(all.length / 80)) === 0);
+  if (samples[samples.length - 1] !== all[all.length - 1]) samples.push(all[all.length - 1]);
+  const n = h.n, first = samples[0], last = samples[samples.length - 1];
+  // стартовая J-форма: верх — на дальний ряд, низ — на ближний, углы растут книзу
+  const phiTop = deg(Math.atan2(h.z - m.h / 2 - last.z, last.s));
+  const phiBot = deg(Math.atan2(h.z - (n - 0.5) * m.h - first.z, Math.max(0.5, first.s)));
+  const tiltFree = autoTilt || m.frameSplays.length === 1;
+  if (tiltFree) h.tilt = clamp(Math.round((phiTop - h.angles[0]) * 2) / 2, -20, 20);
+  else h.angles[0] = snap(phiTop - h.tilt, m.frameSplays);
+  let cur = h.tilt + h.angles[0];
   for (let k = 1; k < n; k++) {
     const want = phiTop + (phiBot - phiTop) * (k / (n - 1)) ** 2;
-    st.angles[k] = snap(Math.max(0, want - cur), m.splays);
-    cur += st.angles[k];
+    h.angles[k] = snap(Math.max(0, want - cur), m.splays);
+    cur += h.angles[k];
   }
-  let best = autoScore(st, samples);
+  const score = () => autoScore(h, sec, samples);
+  let best = score();
   const tryValue = (get, set, values) => {
     const start = get();
     let bestV = start, improved = false;
     for (const v of values) {
       if (v === start) continue;
       set(v);
-      const sc = autoScore(st, samples);
+      const sc = score();
       if (sc < best - 1e-9) { best = sc; bestV = v; improved = true; }
     }
     set(bestV);
     return improved;
   };
-  // Перенос 1,5–3° между соседними стыками: меняет форму массива, не сдвигая нижние колонки
   const maxSplay = m.splays[m.splays.length - 1];
   const tryShift = i => {
     let improved = false;
-    for (const d of [1.5, -1.5, 3, -3]) {
-      const a = st.angles[i] + d, c = st.angles[i + 1] - d;
-      if (a < 0 || c < 0 || a > maxSplay || c > maxSplay) continue;
-      const oa = st.angles[i], oc = st.angles[i + 1];
-      st.angles[i] = a; st.angles[i + 1] = c;
-      const sc = autoScore(st, samples);
-      if (sc < best - 1e-9) { best = sc; improved = true; } else { st.angles[i] = oa; st.angles[i + 1] = oc; }
+    const steps = [m.splays[1], -m.splays[1], 2 * m.splays[1], -2 * m.splays[1]];
+    for (const d of steps) {
+      const a = h.angles[i] + d, c = h.angles[i + 1] - d;
+      if (a < 0 || c < 0 || a > maxSplay || c > maxSplay || !m.splays.includes(a) || !m.splays.includes(c)) continue;
+      const oa = h.angles[i], oc = h.angles[i + 1];
+      h.angles[i] = a; h.angles[i + 1] = c;
+      const sc = score();
+      if (sc < best - 1e-9) { best = sc; improved = true; } else { h.angles[i] = oa; h.angles[i + 1] = oc; }
     }
     return improved;
   };
   for (let pass = 0; pass < 20; pass++) {
     let improved = false;
-    if (st.autoTilt) {
-      const t0 = st.frameTilt;
+    if (tiltFree) {
+      const t0 = h.tilt;
       const opts = [-2, -1, -0.5, 0.5, 1, 2].map(d => Math.round((t0 + d) * 2) / 2).filter(v => v >= -20 && v <= 20);
-      improved = tryValue(() => st.frameTilt, v => { st.frameTilt = v; }, opts) || improved;
+      improved = tryValue(() => h.tilt, v => { h.tilt = v; }, opts) || improved;
     } else {
-      improved = tryValue(() => st.angles[0], v => { st.angles[0] = v; }, m.frameSplays) || improved;
+      improved = tryValue(() => h.angles[0], v => { h.angles[0] = v; }, m.frameSplays) || improved;
     }
     for (let i = 1; i < n; i++)
-      improved = tryValue(() => st.angles[i], v => { st.angles[i] = v; }, m.splays) || improved;
+      improved = tryValue(() => h.angles[i], v => { h.angles[i] = v; }, m.splays) || improved;
     for (let i = 1; i < n - 1; i++) improved = tryShift(i) || improved;
     if (!improved) break;
   }
-  return st;
+  return h;
 }
-
-const boxColor = (i, n) => `color-mix(in oklch, var(--ray-b) ${n > 1 ? Math.round(i / (n - 1) * 100) : 0}%, var(--ray-a))`;
-
+</script>
+<script>
 // ---------- форматирование ----------
 const fmt = (v, d = 1) => Number(v).toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fmtDeg = v => (Number.isInteger(v) ? String(v) : fmt(v, 1)) + '°';
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 const pts = (list, X, Y) => list.map(p => `${X(p.x).toFixed(1)},${Y(p.y).toFixed(1)}`).join(' ');
+const boxColor = (i, n) => `color-mix(in oklch, var(--ray-b) ${n > 1 ? Math.round(i / (n - 1) * 100) : 0}%, var(--ray-a))`;
 
-// ---------- пульт ввода ----------
-function numField(id, label, { step = 0.1, min, max, unit = 'м', hint = '' } = {}) {
-  return `<div class="field">
-    <label for="${id}">${label}, ${unit}</label>
-    <input type="number" id="${id}" data-key="${id}" step="${step}"${min != null ? ` min="${min}"` : ''}${max != null ? ` max="${max}"` : ''} inputmode="decimal">
-    ${hint ? `<span class="hint">${hint}</span>` : ''}
-  </div>`;
+// Цвета карты уровня, шаг 3 дБ (0 дБ — самое громкое место публики)
+const MAP_STOPS = [[0, [253, 231, 37]], [-3, [122, 209, 81]], [-6, [34, 168, 132]], [-9, [42, 120, 142]], [-12, [65, 68, 135]], [-15, [68, 1, 84]]];
+function mapColor(d) {
+  if (d >= 0) return `rgb(${MAP_STOPS[0][1]})`;
+  for (let i = 1; i < MAP_STOPS.length; i++) {
+    const [d1, c1] = MAP_STOPS[i];
+    if (d >= d1) {
+      const [d0, c0] = MAP_STOPS[i - 1], t = (d0 - d) / (d0 - d1);
+      return `rgb(${c0.map((v, k) => Math.round(v + (c1[k] - v) * t))})`;
+    }
+  }
+  return `rgb(${MAP_STOPS[MAP_STOPS.length - 1][1]})`;
 }
-function renderControls() {
-  const m = MODELS[state.model];
-  document.getElementById('controls').innerHTML = `
-    <section class="group">
-      <h2>Массив</h2>
-      <div class="field">
-        <label for="model">Модель</label>
-        <select id="model" data-key="model">${Object.entries(MODELS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('')}</select>
-      </div>
-      <div class="field">
-        <label for="n">Колонок на сторону</label>
-        <div class="stepper">
-          <button type="button" data-step="n:-1" aria-label="Меньше колонок">−</button>
-          <input type="number" id="n" data-key="n" step="1" min="1" max="${m.maxBoxes}" inputmode="numeric">
-          <button type="button" data-step="n:1" aria-label="Больше колонок">+</button>
-        </div>
-      </div>
-      ${numField('topH', 'Высота верхней точки', { step: 0.1, min: 1, max: 40, hint: 'Верх передней грани первой колонки над полом' })}
-      <div class="field">
-        <label for="frameTilt">Наклон рамы, °</label>
-        <div class="stepper">
-          <button type="button" data-step="frameTilt:-0.5" aria-label="Наклон рамы вверх">−</button>
-          <input type="number" id="frameTilt" data-key="frameTilt" step="0.5" min="-20" max="20" inputmode="decimal">
-          <button type="button" data-step="frameTilt:0.5" aria-label="Наклон рамы вниз">+</button>
-        </div>
-        <span class="hint">Плюс — вниз, к публике. Задаётся выбором точки подвеса на раме</span>
-      </div>
-      <div class="auto">
-        <button type="button" class="primary" data-action="auto">Подобрать углы</button>
-        <label class="check"><input type="checkbox" id="autoTilt" data-key="autoTilt"> Подбирать и наклон рамы</label>
-        <span class="hint">Без галочки наклон рамы остаётся твоим, подбирается угол первой колонки к раме</span>
-        <div class="auto-result" id="autoResult" hidden>
-          <span id="autoNote"></span>
-          <button type="button" data-action="undo">Вернуть мои углы</button>
-        </div>
-      </div>
-    </section>
-    <section class="group">
-      <h2>Зал</h2>
-      ${numField('roomL', 'Длина зала', { step: 0.5, min: 3, max: 300, hint: 'От передней грани массива до задней стены' })}
-      ${numField('roomH', 'Высота потолка', { step: 0.5, min: 2, max: 80 })}
-    </section>
-    <section class="group">
-      <h2>Публика</h2>
-      ${numField('audStart', 'Первый ряд', { step: 0.5, min: 0, max: 300, hint: 'Расстояние от массива' })}
-      ${numField('audEnd', 'Последний ряд', { step: 0.5, min: 0.5, max: 300 })}
-      ${numField('ear', 'Высота ушей', { step: 0.1, min: 0, max: 30 })}
-      <div class="quick">
-        <button type="button" data-set="ear:1.7">Стоя 1,7</button>
-        <button type="button" data-set="ear:1.2">Сидя 1,2</button>
-      </div>
-      ${numField('rise', 'Подъём к последнему ряду', { step: 0.1, min: 0, max: 40, hint: 'Амфитеатр или балкон: насколько последний ряд выше первого' })}
-    </section>
-    <section class="group">
-      <h2>Вид</h2>
-      <label class="check"><input type="checkbox" id="cones" data-key="cones"> Конусы покрытия (−6 дБ, ${m.vDisp}° по вертикали)</label>
-      <div class="quick">
-        <button type="button" data-action="zero">Все углы 0°</button>
-        <button type="button" data-action="example">Вернуть пример</button>
-      </div>
-    </section>`;
-  syncInputs();
+function mapLegend() {
+  return MAP_STOPS.map(([d]) => `<span><i style="background:${mapColor(d)}"></i>${d === 0 ? '0' : '−' + Math.abs(d)}</span>`).join('') + '<span>дБ</span>';
 }
-function syncInputs() {
-  document.querySelectorAll('#controls [data-key]').forEach(el => {
-    const v = state[el.dataset.key];
-    if (el.type === 'checkbox') el.checked = !!v;
-    else if (document.activeElement !== el) el.value = v;
+
+// Сетка с подписями в метрах
+function gridLines(out, X, Y, xr, yr, H, pad, W, s) {
+  const minor = s >= 9 ? 1 : 2, major = 5;
+  for (let x = Math.ceil(xr[0] / minor) * minor; x <= xr[1]; x += minor)
+    out.push(`<line x1="${X(x)}" y1="${Y(yr[1])}" x2="${X(x)}" y2="${Y(yr[0])}" class="g${x % major === 0 ? ' gm' : ''}"/>`);
+  for (let y = Math.ceil(yr[0] / minor) * minor; y <= yr[1]; y += minor)
+    out.push(`<line x1="${X(xr[0])}" y1="${Y(y)}" x2="${X(xr[1])}" y2="${Y(y)}" class="g${y % major === 0 ? ' gm' : ''}"/>`);
+  for (let x = Math.ceil(xr[0] / major) * major; x <= xr[1]; x += major)
+    out.push(`<text x="${X(x)}" y="${H - 8}" class="ax" text-anchor="middle">${x}</text>`);
+  for (let y = Math.ceil(yr[0] / major) * major; y <= yr[1]; y += major)
+    out.push(`<text x="${pad.l - 6}" y="${Y(y) + 4}" class="ax" text-anchor="end">${y}</text>`);
+  out.push(`<text x="${W - pad.r}" y="${H - 8}" class="ax" text-anchor="end">м</text>`);
+}
+
+// ---------- вид сверху ----------
+let topMap = null; // текущий масштаб вида сверху — нужен, чтобы двигать подвесы мышью
+function topSVG(st, V, W) {
+  const { L, W: RW } = st.room;
+  const xMin = Math.min(-1.5, ...V.hangs.map(d => d.h.x - 1.5)), xMax = L + 0.6;
+  const yMax = RW / 2 + 0.6, yMin = -RW / 2 - 0.6;
+  const pad = { l: 34, r: 12, t: 12, b: 28 };
+  const s = Math.min((W - pad.l - pad.r) / (xMax - xMin), 560 / (yMax - yMin));
+  const w = Math.round(pad.l + pad.r + (xMax - xMin) * s), H = Math.round(pad.t + pad.b + (yMax - yMin) * s);
+  const X = x => pad.l + (x - xMin) * s, Y = y => pad.t + (yMax - y) * s;
+  topMap = { xMin, yMax, s, pad };
+  const out = [];
+  gridLines(out, X, Y, [xMin, xMax], [yMin, yMax], H, pad, w, s);
+  // карта уровня
+  if (V.map && V.map.L) {
+    out.push('<g shape-rendering="crispEdges">');
+    V.map.points.forEach((p, k) => {
+      out.push(`<rect x="${(X(p.X - p.dx / 2)).toFixed(1)}" y="${(Y(p.Y + p.dy / 2)).toFixed(1)}" width="${(p.dx * s + 0.6).toFixed(1)}" height="${(p.dy * s + 0.6).toFixed(1)}" fill="${mapColor(V.map.L[k] - V.ref)}"/>`);
+    });
+    out.push('</g>');
+  }
+  out.push(`<rect x="${X(0)}" y="${Y(RW / 2)}" width="${L * s}" height="${RW * s}" class="room"/>`);
+  out.push(`<text x="${X(0) - 6}" y="${Y(0)}" class="lbl" text-anchor="middle" transform="rotate(-90 ${X(0) - 6} ${Y(0)})">сцена</text>`);
+  // зоны
+  st.zones.forEach(z => {
+    out.push(`<rect x="${X(z.x1)}" y="${Y(z.y2)}" width="${(z.x2 - z.x1) * s}" height="${(z.y2 - z.y1) * s}" class="zone${V.map && V.map.L ? ' mapped' : ''}"/>`);
+    out.push(`<text x="${X(z.x1) + 5}" y="${Y(z.y2) + 14}" class="zlbl">${esc(z.name)}</text>`);
   });
-}
-const NUM_LIMITS = { n: [1, 24], topH: [0.5, 60], frameTilt: [-20, 20], roomL: [3, 300], roomH: [2, 80], audStart: [0, 300], audEnd: [0.5, 300], ear: [0, 30], rise: [0, 40] };
-function setValue(key, raw) {
-  if (key === 'model') { state.model = raw; }
-  else if (key === 'cones' || key === 'autoTilt') { state[key] = !!raw; }
-  else {
-    let v = parseFloat(String(raw).replace(',', '.'));
-    if (!Number.isFinite(v)) return;
-    const [lo, hi] = NUM_LIMITS[key];
-    state[key] = Math.min(hi, Math.max(lo, v));
+  // разрез выбранного подвеса
+  const sd = V.hangs[V.selIdx];
+  if (sd) {
+    const e = secWorld(sd.sec, sd.sec.sMax, 0);
+    out.push(`<line x1="${X(sd.h.x)}" y1="${Y(sd.h.y)}" x2="${X(e.X)}" y2="${Y(e.Y)}" class="cut"/>`);
   }
-  fitAngles(state);
-  update();
-}
-document.addEventListener('input', e => {
-  const el = e.target.closest('#controls [data-key]');
-  if (!el) return;
-  setValue(el.dataset.key, el.type === 'checkbox' ? el.checked : el.value);
-});
-document.addEventListener('change', e => {
-  const el = e.target.closest('#controls [data-key]');
-  if (el && el.type === 'number') syncInputsForce(el);
-});
-function syncInputsForce(el) { el.value = state[el.dataset.key]; }
-document.addEventListener('click', e => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  if (b.dataset.step) {
-    const [k, d] = b.dataset.step.split(':');
-    setValue(k, Math.round((state[k] + parseFloat(d)) * 10) / 10);
-    syncInputs();
-  } else if (b.dataset.set) {
-    const [k, v] = b.dataset.set.split(':');
-    setValue(k, v);
-    syncInputs();
-  } else if (b.dataset.action === 'zero') {
-    state.angles = state.angles.map(() => 0);
-    update();
-  } else if (b.dataset.action === 'example') {
-    state = { ...EXAMPLE, angles: [...EXAMPLE.angles] };
-    undoState = null;
-    renderControls();
-    update();
-  } else if (b.dataset.action === 'auto') {
-    runAuto();
-  } else if (b.dataset.action === 'undo' && undoState) {
-    state.frameTilt = undoState.frameTilt;
-    state.angles = [...undoState.angles];
-    undoState = null;
-    document.getElementById('autoResult').hidden = true;
-    syncInputs();
-    update();
-  }
-});
-
-let undoState = null;
-function runAuto() {
-  const res = document.getElementById('autoResult'), note = document.getElementById('autoNote');
-  const before = arr.ls ? arr.ls.spread : null;
-  const next = autoSplay(state);
-  if (!next) {
-    note.textContent = 'Задай первый и последний ряд — без публики подбирать не под что.';
-    res.hidden = false;
-    return;
-  }
-  undoState = { frameTilt: state.frameTilt, angles: [...state.angles] };
-  state.frameTilt = next.frameTilt;
-  state.angles = next.angles;
-  syncInputs();
-  update();
-  const after = arr.ls.spread;
-  note.textContent = before == null
-    ? `Подобрано: разброс ${fmt(after)} дБ.`
-    : `Подобрано: разброс ${fmt(after)} дБ, было ${fmt(before)} дБ.`;
-  res.hidden = false;
+  // подвесы: контур колонки сверху и стрелка направления
+  V.hangs.forEach((d, i) => {
+    const h = d.h, m = MODELS[h.model], a = rad(h.az), ca = Math.cos(a), sa = Math.sin(a);
+    const depth = m.profile[m.profile.length - 1][0], hw = m.width / 2;
+    const P = (f, l) => ({ x: h.x + f * ca - l * sa, y: h.y + f * sa + l * ca });
+    const body = [P(0, hw), P(0, -hw), P(-depth, -hw), P(-depth, hw)];
+    const tip = P(1.6, 0), w1 = P(1.25, 0.18), w2 = P(1.25, -0.18);
+    const lab = P(-depth - 0.6, 0);
+    out.push(`<g class="hang${i === V.selIdx ? ' sel' : ''}" data-hang="${i}">
+      <line x1="${X(h.x)}" y1="${Y(h.y)}" x2="${X(tip.x)}" y2="${Y(tip.y)}" class="dir"/>
+      <polygon points="${pts([tip, w1, w2], X, Y)}" class="dir-head"/>
+      <polygon points="${pts(body, X, Y)}" class="foot"/>
+      <circle cx="${X(h.x)}" cy="${Y(h.y)}" r="14" class="grab"/>
+      <text x="${X(lab.x)}" y="${Y(lab.y) + 4}" class="hlbl" text-anchor="middle">${esc(h.name)}</text>
+    </g>`);
+  });
+  return `<svg viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" style="max-width:${w}px" id="topSvg" role="img" aria-label="Вид сверху: зал, зоны публики и подвесы">${out.join('')}</svg>`;
 }
 
-// ---------- вид сбоку: зал ----------
-// Общий горизонтальный масштаб для разреза и графика уровня — чтобы метры совпадали по вертикали
+// ---------- разрез по оси выбранного подвеса ----------
 const X_PAD = { l: 36, r: 14 };
-const xRange = (st, arr) => ({ xMin: Math.min(-1.2, arr.minX - 0.4), xMax: st.roomL + 0.4 });
+const sRange = V => ({ xMin: Math.min(-1.2, V.arr.minX - 0.4), xMax: V.sec.sMax + 0.4 });
 
-function roomSVG(st, arr, W) {
+function sectionSVG(st, V, W) {
+  const { h, arr, sec } = V;
   const pad = { ...X_PAD, t: 14, b: 36 };
-  const { xMin, xMax } = xRange(st, arr);
-  const yMin = -0.3, yMax = Math.max(st.roomH, arr.topY + 0.5) + 0.3;
+  const { xMin, xMax } = sRange(V);
+  const yMin = -0.3, yMax = Math.max(sec.H, arr.topY + 0.5) + 0.3;
   const s = (W - pad.l - pad.r) / (xMax - xMin);
   const H = Math.round(pad.t + pad.b + (yMax - yMin) * s);
   const X = x => pad.l + (x - xMin) * s, Y = y => pad.t + (yMax - y) * s;
   const out = [];
-  // сетка
-  const minor = s >= 9 ? 1 : 2, major = 5;
-  for (let x = Math.ceil(xMin / minor) * minor; x <= xMax; x += minor)
-    out.push(`<line x1="${X(x)}" y1="${Y(yMax)}" x2="${X(x)}" y2="${Y(yMin)}" class="g${x % major === 0 ? ' gm' : ''}"/>`);
-  for (let y = 0; y <= yMax; y += minor)
-    out.push(`<line x1="${X(xMin)}" y1="${Y(y)}" x2="${X(xMax)}" y2="${Y(y)}" class="g${y % major === 0 ? ' gm' : ''}"/>`);
-  for (let x = 0; x <= xMax; x += major)
-    out.push(`<text x="${X(x)}" y="${H - 8}" class="ax" text-anchor="middle">${x}</text>`);
-  for (let y = major; y <= yMax; y += major)
-    out.push(`<text x="${pad.l - 6}" y="${Y(y) + 4}" class="ax" text-anchor="end">${y}</text>`);
-  out.push(`<text x="${W - pad.r}" y="${H - 8}" class="ax" text-anchor="end">м</text>`);
-  // зал
-  const x1 = Math.min(st.audStart, st.roomL), x2 = Math.min(st.audEnd, st.roomL);
-  out.push(`<polyline points="${X(xMin)},${Y(0)} ${X(st.roomL)},${Y(0)} ${X(st.roomL)},${Y(st.roomH)} ${X(xMin)},${Y(st.roomH)}" class="room"/>`);
-  if (x2 > x1) {
-    const a1 = { x: x1, y: st.ear }, a2 = { x: x2, y: st.ear + st.rise };
-    out.push(`<polygon points="${pts([a1, a2, { x: x2, y: 0 }, { x: x1, y: 0 }], X, Y)}" class="aud-fill"/>`);
-    out.push(`<line x1="${X(a1.x)}" y1="${Y(a1.y)}" x2="${X(a2.x)}" y2="${Y(a2.y)}" class="aud"/>`);
-    out.push(`<text x="${X((x1 + x2) / 2)}" y="${Y((a1.y + a2.y) / 2) + 16}" class="lbl" text-anchor="middle">публика · уши ${fmt(st.ear)} м</text>`);
-  }
+  gridLines(out, X, Y, [xMin, xMax], [0, yMax], H, pad, W, s);
+  out.push(`<polyline points="${X(xMin)},${Y(0)} ${X(sec.sMax)},${Y(0)} ${X(sec.sMax)},${Y(sec.H)} ${X(xMin)},${Y(sec.H)}" class="room"/>`);
+  // зоны публики в разрезе
+  sec.segs.forEach(g => {
+    const a = { x: g.sa, y: g.za }, b = { x: g.sb, y: g.zb };
+    out.push(`<polygon points="${pts([a, b, { x: g.sb, y: Math.max(0, g.zb - 0.6) }, { x: g.sa, y: Math.max(0, g.za - 0.6) }], X, Y)}" class="aud-fill"/>`);
+    out.push(`<line x1="${X(a.x)}" y1="${Y(a.y)}" x2="${X(b.x)}" y2="${Y(b.y)}" class="aud"/>`);
+    out.push(`<text x="${X((g.sa + g.sb) / 2)}" y="${Y((g.za + g.zb) / 2) - 8}" class="lbl" text-anchor="middle">${esc(g.name)}</text>`);
+  });
   // конусы покрытия и лучи
-  const m = MODELS[st.model], surf = surfaces(st), n = arr.boxes.length;
-  if (st.cones) arr.boxes.forEach(b => {
+  const m = MODELS[h.model], surf = surfaces(sec), n = arr.boxes.length;
+  if (st.view.cones) arr.boxes.forEach(b => {
     const edge = [];
     for (let k = 0; k <= 16; k++) {
-      const h = cast(b.c, b.phi - m.vDisp / 2 + m.vDisp * k / 16, surf);
-      if (h) edge.push(h);
+      const hit = cast(b.c, b.phi - m.vDisp / 2 + m.vDisp * k / 16, surf);
+      if (hit) edge.push(hit);
     }
     out.push(`<polygon points="${pts([b.c, ...edge], X, Y)}" class="cone" style="fill:${boxColor(b.i, n)}" data-i="${b.i}"/>`);
   });
   arr.boxes.forEach(b => {
-    const h = b.hit;
-    if (!h) return;
+    if (!b.hit) return;
     const col = boxColor(b.i, n);
-    out.push(`<line x1="${X(b.c.x)}" y1="${Y(b.c.y)}" x2="${X(h.x)}" y2="${Y(h.y)}" class="ray" style="stroke:${col}" data-i="${b.i}"/>`);
-    out.push(`<circle cx="${X(h.x)}" cy="${Y(h.y)}" r="3.5" class="hit" style="fill:${col}" data-i="${b.i}"/>`);
+    out.push(`<line x1="${X(b.c.x)}" y1="${Y(b.c.y)}" x2="${X(b.hit.x)}" y2="${Y(b.hit.y)}" class="ray" style="stroke:${col}" data-i="${b.i}"/>`);
+    out.push(`<circle cx="${X(b.hit.x)}" cy="${Y(b.hit.y)}" r="3.5" class="hit" style="fill:${col}" data-i="${b.i}"/>`);
   });
-  // полоса покрытия публики под полом
-  if (arr.cov) {
-    const ss = arr.cov.samples, step = ss.length > 1 ? ss[1].x - ss[0].x : 0.1;
-    ss.forEach(p => {
+  // полоса покрытия под полом
+  if (V.cov) {
+    const ss = V.cov.samples;
+    ss.forEach((p, k) => {
+      const next = ss[k + 1], prev = ss[k - 1];
+      const half = Math.min(0.3, ((next ? next.s - p.s : 0) + (prev ? p.s - prev.s : 0)) / 2 || 0.05);
       const cls = p.who.length === 0 ? 'cov0' : p.who.length === 1 ? 'cov1' : 'cov2';
-      out.push(`<rect x="${X(p.x - step / 2).toFixed(1)}" y="${Y(0) + 5}" width="${Math.max(1, step * s + 0.6).toFixed(1)}" height="7" class="${cls}"/>`);
+      out.push(`<rect x="${X(p.s - half / 2).toFixed(1)}" y="${Y(0) + 5}" width="${Math.max(1, half * s + 0.6).toFixed(1)}" height="7" class="${cls}"/>`);
     });
   }
-  // массив
   out.push(`<polygon points="${pts(arr.frame, X, Y)}" class="frame"/>`);
   arr.boxes.forEach(b => out.push(`<polygon points="${pts(b.poly, X, Y)}" class="box" data-i="${b.i}"/>`));
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Разрез зала с массивом колонок">${out.join('')}</svg>`;
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Разрез по оси подвеса">${out.join('')}</svg>`;
 }
 
-// ---------- график уровня по залу ----------
-function levelSVG(st, arr, W) {
-  const lv = arr.lv, ls = arr.ls;
-  if (!lv || !lv.length) return '<p class="note">Задай первый и последний ряд, чтобы увидеть уровень.</p>';
+// ---------- уровень вдоль разреза ----------
+function levelSVG(st, V, W) {
+  const lv = V.secL;
+  if (!lv || !lv.length) return '<p class="note">В разрез этого подвеса не попала ни одна зона публики.</p>';
   const pad = { ...X_PAD, t: 12, b: 26 };
-  const { xMin, xMax } = xRange(st, arr);
+  const { xMin, xMax } = sRange(V);
   const s = (W - pad.l - pad.r) / (xMax - xMin);
   const X = x => pad.l + (x - xMin) * s;
-  const top = 1, bottom = Math.min(-6, Math.floor((ls.min - ls.max - 1) / 3) * 3);
+  const rel = lv.map(p => p.L - V.ref);
+  const lo = Math.min(...rel);
+  const top = 1, bottom = Math.min(-6, Math.floor((lo - 1) / 3) * 3);
   const H = 160, Y = d => pad.t + (top - d) / (top - bottom) * (H - pad.t - pad.b);
   const out = [];
   for (let d = 0; d >= bottom; d -= 3) {
     out.push(`<line x1="${X(xMin)}" y1="${Y(d)}" x2="${X(xMax)}" y2="${Y(d)}" class="g${d === 0 ? ' gm' : ''}"/>`);
     out.push(`<text x="${pad.l - 6}" y="${Y(d) + 4}" class="ax" text-anchor="end">${d === 0 ? '0' : '−' + Math.abs(d)}</text>`);
   }
-  for (let x = 0; x <= xMax; x += 5)
+  for (let x = Math.ceil(xMin / 5) * 5; x <= xMax; x += 5)
     out.push(`<text x="${X(x)}" y="${H - 6}" class="ax" text-anchor="middle">${x}</text>`);
   out.push(`<text x="${W - pad.r}" y="${H - 6}" class="ax" text-anchor="end">м</text>`);
   out.push(`<text x="${pad.l + 4}" y="${pad.t + 10}" class="ax">дБ</text>`);
-  const line = lv.map(p => `${X(p.x).toFixed(1)},${Y(p.L - ls.max).toFixed(1)}`);
-  out.push(`<polygon points="${X(lv[0].x).toFixed(1)},${Y(bottom)} ${line.join(' ')} ${X(lv[lv.length - 1].x).toFixed(1)},${Y(bottom)}" class="lvl-fill"/>`);
-  out.push(`<polyline points="${line.join(' ')}" class="lvl"/>`);
-  const ym = Y(ls.mean - ls.max);
-  out.push(`<line x1="${X(lv[0].x)}" y1="${ym}" x2="${X(lv[lv.length - 1].x)}" y2="${ym}" class="lvl-mean"/>`);
-  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Примерный уровень звука по глубине зала">${out.join('')}</svg>`;
+  // у каждой зоны своя линия (балкон может нависать над партером), разрывы — где зона прерывается
+  const runs = [];
+  [...new Set(lv.map(p => p.zi))].forEach(zi => {
+    let prev = null;
+    lv.forEach((p, k) => {
+      if (p.zi !== zi) return;
+      if (!prev || p.s - prev.s > 1) runs.push([]);
+      runs[runs.length - 1].push({ x: X(p.s), y: Y(rel[k]) });
+      prev = p;
+    });
+  });
+  runs.forEach(r => {
+    const line = r.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    out.push(`<polygon points="${r[0].x.toFixed(1)},${Y(bottom)} ${line} ${r[r.length - 1].x.toFixed(1)},${Y(bottom)}" class="lvl-fill"/>`);
+    out.push(`<polyline points="${line}" class="lvl"/>`);
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Примерный уровень звука вдоль разреза">${out.join('')}</svg>`;
 }
 
 // ---------- массив крупно ----------
-function arraySVG(st, arr, W) {
-  const m = MODELS[st.model], n = arr.boxes.length;
-  const stub = 0.55; // длина оси на крупном виде, м
+function arraySVG(V, W) {
+  const { h, arr } = V, n = arr.boxes.length;
+  const stub = 0.55;
   const xs = [arr.minX - 0.42, arr.maxX + stub + 0.1];
   const ys = [arr.bottomY - 0.22, arr.topY + 0.2];
   const pad = { l: 8, r: 8, t: 8, b: 8 };
@@ -756,23 +800,444 @@ function arraySVG(st, arr, W) {
     out.push(`<rect x="${X(b.c.x) - 3}" y="${Y(b.c.y) - 3}" width="6" height="6" style="fill:${col}" data-i="${b.i}"/>`);
     const mid = { x: b.c.x - 0.2 * b.a.x, y: b.c.y - 0.2 * b.a.y };
     out.push(`<text x="${X(mid.x)}" y="${Y(mid.y) + 4}" class="num" text-anchor="middle">${b.i + 1}</text>`);
-    // угол к предыдущей колонке (или к раме) — подпись у задней части стыка
     const back = { x: b.top.x - 0.40 * b.a.x - 0.02, y: b.top.y - 0.40 * b.a.y };
-    out.push(`<text x="${X(back.x)}" y="${Y(back.y) + 4}" class="ang" text-anchor="end">${fmtDeg(st.angles[b.i])}</text>`);
+    out.push(`<text x="${X(back.x)}" y="${Y(back.y) + 4}" class="ang" text-anchor="end">${fmtDeg(h.angles[b.i])}</text>`);
   });
   const topB = arr.boxes[0], lowB = arr.boxes[n - 1];
-  out.push(`<text x="${X(topB.top.x) + 6}" y="${Y(topB.top.y) - 2}" class="lbl">верх ${fmt(st.topH, 2)} м</text>`);
+  out.push(`<text x="${X(topB.top.x) + 6}" y="${Y(topB.top.y) - 2}" class="lbl">верх ${fmt(h.z, 2)} м</text>`);
   out.push(`<text x="${X(lowB.bottom.x) + 6}" y="${Y(lowB.bottom.y) + 14}" class="lbl">низ ${fmt(lowB.bottom.y, 2)} м</text>`);
   return `<svg viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" style="max-width:${w}px" role="img" aria-label="Массив крупно: углы между колонками">${out.join('')}</svg>`;
 }
+</script>
+<script>
+// ---------- состояние ----------
+const STORE_KEY = 'razves.v3';
+let uidSeq = 1;
+const newId = p => p + Date.now().toString(36) + (uidSeq++);
 
-// ---------- сборка страницы ----------
+const EXAMPLE = () => ({
+  room: { L: 32, W: 20, H: 12 },
+  hangs: [
+    { id: 'hL', name: 'Левый', model: 'cad208', n: 8, x: 1.5, y: 6, z: 7, az: 0, tilt: 3, angles: [6, 1.5, 1.5, 3, 3, 4.5, 6, 6], pattern: '100', mirrorOf: null },
+    { id: 'hR', name: 'Правый', mirrorOf: 'hL' },
+  ],
+  zones: [{ id: 'z1', name: 'Партер', x1: 5, x2: 30, y1: -9, y2: 9, z: 1.7, rise: 0 }],
+  sel: 0,
+  view: { cones: true },
+  autoTilt: true,
+});
+
+const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+function fitHang(h) {
+  if (!MODELS[h.model]) h.model = 'cad208';
+  const m = MODELS[h.model];
+  h.n = clamp(Math.round(num(h.n, 8)), 1, m.maxBoxes);
+  const a = Array.isArray(h.angles) ? h.angles.slice(0, h.n) : [];
+  while (a.length < h.n) a.push(0);
+  h.angles = a.map((v, i) => snap(num(+v, 0), i === 0 ? m.frameSplays : m.splays));
+  if (!m.hPatterns[h.pattern]) h.pattern = m.hDefault;
+  for (const k of ['x', 'y', 'z', 'az', 'tilt']) h[k] = num(h[k], { x: 1.5, y: 0, z: 7, az: 0, tilt: 0 }[k]);
+  h.name = String(h.name || 'Подвес');
+  return h;
+}
+function sanitize(st) {
+  const ex = EXAMPLE();
+  st.room = { ...ex.room, ...(st.room || {}) };
+  for (const k of ['L', 'W', 'H']) st.room[k] = num(st.room[k], ex.room[k]);
+  st.view = { ...ex.view, ...(st.view || {}) };
+  st.autoTilt = st.autoTilt !== false;
+  st.hangs = (Array.isArray(st.hangs) && st.hangs.length ? st.hangs : ex.hangs).map(h => ({ ...h, id: h.id || newId('h') }));
+  // зеркальная копия без исходника превращается в обычный подвес
+  st.hangs.forEach(h => {
+    if (h.mirrorOf && !st.hangs.some(o => o.id === h.mirrorOf && !o.mirrorOf)) h.mirrorOf = null;
+    if (!h.mirrorOf) fitHang(h);
+  });
+  st.zones = (Array.isArray(st.zones) ? st.zones : ex.zones).map(z => ({
+    id: z.id || newId('z'), name: String(z.name || 'Зона'),
+    x1: num(z.x1, 5), x2: num(z.x2, 20), y1: num(z.y1, -5), y2: num(z.y2, 5), z: num(z.z, 1.7), rise: num(z.rise, 0),
+  }));
+  st.sel = clamp(Math.round(num(st.sel, 0)), 0, st.hangs.length - 1);
+  return st;
+}
+// Перенос сохранённого расчёта из первой версии (один подвес, одна зона)
+function fromV1(o) {
+  const ex = EXAMPLE();
+  return {
+    room: { L: num(o.roomL, 32), W: 20, H: num(o.roomH, 12) },
+    hangs: [{ id: 'hL', name: 'Подвес', model: 'cad208', n: num(o.n, 8), x: 0, y: 0, z: num(o.topH, 7), az: 0, tilt: num(o.frameTilt, 0), angles: o.angles, pattern: '100', mirrorOf: null }],
+    zones: [{ id: 'z1', name: 'Партер', x1: num(o.audStart, 5), x2: num(o.audEnd, 30), y1: -9, y2: 9, z: num(o.ear, 1.7), rise: num(o.rise, 0) }],
+    sel: 0, view: { cones: o.cones !== false }, autoTilt: o.autoTilt !== false,
+  };
+}
+function loadState() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(STORE_KEY)); } catch (e) { saved = null; }
+  if (!saved) {
+    try { const old = JSON.parse(localStorage.getItem('razves.v1')); if (old && typeof old === 'object') saved = fromV1(old); } catch (e) { /* нет старого расчёта */ }
+  }
+  return sanitize(saved && typeof saved === 'object' ? saved : EXAMPLE());
+}
+function saveState() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* хранилище недоступно — работаем без него */ }
+}
+let state = loadState();
+
+// Подвес с учётом зеркала: зеркальная копия берёт всё у исходника, Y и поворот — с обратным знаком
+function sourceOf(hg) { return hg.mirrorOf ? state.hangs.find(o => o.id === hg.mirrorOf) : hg; }
+function resolveHang(hg) {
+  if (!hg.mirrorOf) return hg;
+  const src = sourceOf(hg);
+  return { ...src, id: hg.id, name: hg.name, mirrorOf: hg.mirrorOf, y: -src.y, az: -src.az, pattern: MIRROR_PATTERN[src.pattern] || src.pattern };
+}
+const normZone = z => ({ ...z, x1: Math.min(z.x1, z.x2), x2: Math.max(z.x1, z.x2), y1: Math.min(z.y1, z.y2), y2: Math.max(z.y1, z.y2) });
+
+// ---------- расчёт ----------
+// Куда смотрит ось колонки — словами, для таблицы
+function describeHit(b, sec) {
+  const hit = b.hit;
+  if (!hit) return { text: 'мимо зала', cls: 'bad' };
+  if (hit.kind === 'aud') return { text: `${hit.name}, ${fmt(hit.x)} м`, cls: 'ok' };
+  if (!sec.segs.length) return { text: { floor: 'пол', wall: 'стена', ceil: 'потолок' }[hit.kind], cls: 'warn' };
+  const t = Math.tan(rad(b.phi));
+  // ближняя зона: где ось пересекает уровень её ушей (продлённый к сцене)
+  const near = sec.segs.reduce((a, g) => g.sa < a.sa ? g : a);
+  const slope = (near.zb - near.za) / Math.max(1e-6, near.sb - near.sa);
+  const sCross = (b.c.y + b.c.x * t - near.za + slope * near.sa) / (t + slope);
+  if (t + slope > 1e-9 && sCross > b.c.x && sCross < near.sa) return { text: `до ближнего ряда, ${fmt(sCross)} м`, cls: 'warn' };
+  if (hit.kind === 'floor') return { text: `пол вне зон, ${fmt(hit.x)} м`, cls: 'warn' };
+  const far = sec.segs.reduce((a, g) => g.sb > a.sb ? g : a);
+  const over = b.c.y - (far.sb - b.c.x) * t - far.zb;
+  const cls = over >= 0 && over <= 1.5 ? 'ok' : over > 3 || hit.kind === 'ceil' ? 'bad' : 'warn';
+  return { text: `над дальним рядом +${fmt(Math.max(0, over))} м`, cls };
+}
+
+let V = null; // всё посчитанное для отрисовки
+function derive() {
+  const geo = { room: state.room, zones: state.zones.map(normZone) };
+  const hangs = state.hangs.map((hg, idx) => {
+    const h = resolveHang(hg);
+    const arr = computeArray(h);
+    const sec = sectionOf(geo, h);
+    const surf = surfaces(sec);
+    arr.boxes.forEach(b => { b.hit = cast(b.c, b.phi, surf); });
+    return { idx, h, arr, sec };
+  });
+  const sources = hangs.flatMap(d => hangSources(d.h, d.arr));
+  const sel = hangs[state.sel];
+  const samples = sectionSamples(sel.sec);
+  sel.cov = coverage(sel.h, sel.arr, samples);
+  const secLv = levelAt(samples.map(p => secWorld(sel.sec, p.s, p.z)), sources);
+  sel.secL = samples.map((p, k) => ({ s: p.s, zi: p.zi, L: secLv[k] }));
+  const grid = zoneGrid(geo);
+  const map = { points: grid.points, L: levelAt(grid.points, sources) };
+  const all = map.L.concat(secLv);
+  const ref = all.length ? Math.max(...all) : 0;
+  sel.ref = ref;
+  return { geo, hangs, selIdx: state.sel, sel, map, ref, mapStats: levelStats(map.L) };
+}
+
+// ---------- пульт ввода ----------
+function field(path, label, { step = 0.1, unit = 'м', hint = '', disabled = false, value } = {}) {
+  const id = 'f-' + path.replace(/\./g, '-');
+  return `<div class="field">
+    <label for="${id}">${label}${unit ? ', ' + unit : ''}</label>
+    <input type="number" id="${id}" data-path="${path}" step="${step}" inputmode="decimal"${disabled ? ' disabled' : ''}${value != null ? ` value="${value}"` : ''}>
+    ${hint ? `<span class="hint">${hint}</span>` : ''}
+  </div>`;
+}
+function stepper(path, label, step, hint = '', disabled = false) {
+  const id = 'f-' + path.replace(/\./g, '-');
+  return `<div class="field">
+    <label for="${id}">${label}</label>
+    <div class="stepper">
+      <button type="button" data-step="${path}:-${step}" aria-label="Уменьшить"${disabled ? ' disabled' : ''}>−</button>
+      <input type="number" id="${id}" data-path="${path}" step="${step}" inputmode="decimal"${disabled ? ' disabled' : ''}>
+      <button type="button" data-step="${path}:${step}" aria-label="Увеличить"${disabled ? ' disabled' : ''}>+</button>
+    </div>
+    ${hint ? `<span class="hint">${hint}</span>` : ''}
+  </div>`;
+}
+function renderControls() {
+  const hg = state.hangs[state.sel], h = resolveHang(hg), m = MODELS[h.model];
+  const mir = !!hg.mirrorOf, src = sourceOf(hg);
+  const hasMirror = state.hangs.some(o => o.mirrorOf === hg.id);
+  const pats = Object.entries(m.hPatterns);
+  document.getElementById('controls').innerHTML = `
+    <section class="group">
+      <h2>Зал</h2>
+      ${field('room.L', 'Длина (X)', { step: 0.5 })}
+      ${field('room.W', 'Ширина (Y)', { step: 0.5 })}
+      ${field('room.H', 'Высота (Z)', { step: 0.5 })}
+      <span class="hint">X — в глубину от сцены, Y — поперёк (плюс — слева, если смотреть со сцены в зал, 0 — середина), Z — вверх от пола</span>
+    </section>
+    <section class="group">
+      <h2>Подвесы</h2>
+      <div class="tabs" role="tablist">
+        ${state.hangs.map((o, i) => `<button type="button" role="tab" aria-selected="${i === state.sel}" class="tab${i === state.sel ? ' on' : ''}" data-action="selHang" data-idx="${i}">${esc(o.name)}</button>`).join('')}
+        <button type="button" class="tab add" data-action="addHang">+ Подвес</button>
+      </div>
+      <div class="field">
+        <label for="f-h-name">Название</label>
+        <input type="text" id="f-h-name" data-path="h.name" class="text">
+      </div>
+      ${mir ? `<div class="mirror-note">Зеркальная копия «${esc(src.name)}»: меняется вместе с ним, Y и поворот — с обратным знаком.
+        <button type="button" data-action="unlink">Отвязать</button></div>` : ''}
+      <div class="field">
+        <label for="f-h-model">Модель</label>
+        <select id="f-h-model" data-path="h.model"${mir ? ' disabled' : ''}>${Object.entries(MODELS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('')}</select>
+      </div>
+      ${stepper('h.n', 'Колонок', 1, '', mir)}
+      ${field('h.x', 'X', { disabled: mir })}
+      ${field('h.y', 'Y', { disabled: mir })}
+      ${field('h.z', 'Z — верх', { disabled: mir, hint: 'Высота передней верхней точки первой колонки. X и Y — эта же точка; подвес можно двигать мышью на виде сверху' })}
+      ${field('h.az', 'Поворот', { unit: '°', step: 1, disabled: mir, hint: 'По горизонтали: плюс — влево, 0 — прямо в зал' })}
+      ${stepper('h.tilt', 'Наклон рамы, °', 0.5, m.frameSplays.length === 1 ? 'Плюс — вниз. Первая колонка крепится к раме под 0°' : 'Плюс — вниз, к публике. Задаётся выбором точки подвеса на раме', mir)}
+      ${pats.length > 1 ? `<div class="field">
+        <label for="f-h-pattern">По горизонтали</label>
+        <select id="f-h-pattern" data-path="h.pattern"${mir ? ' disabled' : ''}>${pats.map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join('')}</select>
+      </div>` : ''}
+      <div class="auto">
+        <button type="button" class="primary" data-action="auto">Подобрать углы</button>
+        ${m.frameSplays.length > 1 ? `<label class="check"><input type="checkbox" id="f-autoTilt" data-path="autoTilt"> Подбирать и наклон рамы</label>
+        <span class="hint">Без галочки наклон рамы остаётся твоим, подбирается угол первой колонки к раме</span>` : ''}
+        <div class="auto-result" id="autoResult" hidden>
+          <span id="autoNote"></span>
+          <button type="button" data-action="undo">Вернуть мои углы</button>
+        </div>
+      </div>
+      <div class="quick">
+        ${!mir && !hasMirror ? '<button type="button" data-action="mirror">Зеркальная копия</button>' : ''}
+        ${state.hangs.length > 1 ? '<button type="button" data-action="delHang">Удалить подвес</button>' : ''}
+      </div>
+    </section>
+    <section class="group">
+      <h2>Зоны публики</h2>
+      ${state.zones.map((z, k) => `<div class="zone-card">
+        <div class="zone-head">
+          <input type="text" id="f-z-${z.id}-name" data-path="zones.${k}.name" class="text" aria-label="Название зоны">
+          <button type="button" data-action="delZone" data-idx="${k}" aria-label="Удалить зону «${esc(z.name)}»">×</button>
+        </div>
+        <div class="zone-grid">
+          ${[['x1', 'X от'], ['x2', 'X до'], ['y1', 'Y от'], ['y2', 'Y до'], ['z', 'Уши в начале'], ['rise', 'Подъём к концу']].map(([f, l]) =>
+            `<label>${l}<input type="number" id="f-z-${z.id}-${f}" data-path="zones.${k}.${f}" step="0.1" inputmode="decimal"></label>`).join('')}
+        </div>
+      </div>`).join('')}
+      <div class="quick">
+        <button type="button" data-action="addZone" data-kind="floor">+ Партер</button>
+        <button type="button" data-action="addZone" data-kind="balcony">+ Балкон</button>
+      </div>
+      <span class="hint">«Уши в начале» — высота ушей над полом зала у ближнего края зоны (для балкона — вместе с высотой балкона). Подъём идёт к дальнему краю по X</span>
+    </section>
+    <section class="group">
+      <h2>Вид</h2>
+      <label class="check"><input type="checkbox" id="f-cones" data-path="view.cones"> Конусы покрытия (−6 дБ по паспорту)</label>
+      <div class="quick">
+        <button type="button" data-action="zero">Все углы 0°</button>
+        <button type="button" data-action="example">Вернуть пример</button>
+      </div>
+    </section>`;
+  syncInputs();
+}
+function getPath(path) {
+  const [head, ...rest] = path.split('.');
+  if (head === 'h') return resolveHang(state.hangs[state.sel])[rest[0]];
+  if (head === 'zones') return state.zones[+rest[0]][rest[1]];
+  if (head === 'room') return state.room[rest[0]];
+  if (head === 'view') return state.view[rest[0]];
+  return state[head];
+}
+function syncInputs() {
+  document.querySelectorAll('#controls [data-path]').forEach(el => {
+    if (document.activeElement === el) return;
+    const v = getPath(el.dataset.path);
+    if (el.type === 'checkbox') el.checked = !!v;
+    else el.value = v;
+  });
+}
+const LIMITS = {
+  'room.L': [3, 300], 'room.W': [2, 200], 'room.H': [2, 80],
+  'h.n': [1, 24], 'h.x': [-30, 300], 'h.y': [-100, 100], 'h.z': [0.5, 60], 'h.az': [-180, 180], 'h.tilt': [-20, 20],
+  x1: [-30, 300], x2: [-30, 300], y1: [-100, 100], y2: [-100, 100], z: [0, 60], rise: [-30, 60],
+};
+// Возвращает true, если изменилась структура пульта (нужно перерисовать)
+function setPath(path, raw) {
+  const [head, ...rest] = path.split('.');
+  const parse = () => { const v = parseFloat(String(raw).replace(',', '.')); return Number.isFinite(v) ? v : null; };
+  if (head === 'autoTilt') { state.autoTilt = !!raw; return false; }
+  if (head === 'view') { state.view[rest[0]] = !!raw; return false; }
+  if (head === 'room') { const v = parse(); if (v == null) return false; state.room[rest[0]] = clamp(v, ...LIMITS[path]); return false; }
+  if (head === 'zones') {
+    const z = state.zones[+rest[0]], f = rest[1];
+    if (f === 'name') { z.name = String(raw); return false; }
+    const v = parse(); if (v == null) return false;
+    z[f] = clamp(v, ...LIMITS[f]);
+    return false;
+  }
+  if (head === 'h') {
+    const hg = state.hangs[state.sel], f = rest[0];
+    if (f === 'name') { hg.name = String(raw); return false; }
+    if (hg.mirrorOf) return false;
+    if (f === 'model') { hg.model = raw; hg.pattern = MODELS[raw].hDefault; fitHang(hg); return true; }
+    if (f === 'pattern') { hg.pattern = raw; return false; }
+    const v = parse(); if (v == null) return false;
+    hg[f] = clamp(v, ...LIMITS[path]);
+    if (f === 'n') hg.n = clamp(Math.round(hg.n), 1, MODELS[hg.model].maxBoxes);
+    fitHang(hg);
+    return false;
+  }
+  return false;
+}
+document.addEventListener('input', e => {
+  const el = e.target.closest('#controls [data-path]');
+  if (!el) return;
+  const rebuild = setPath(el.dataset.path, el.type === 'checkbox' ? el.checked : el.value);
+  if (el.dataset.path === 'h.name' || /^zones\.\d+\.name$/.test(el.dataset.path)) refreshNames();
+  if (rebuild) renderControls();
+  update();
+});
+document.addEventListener('change', e => {
+  const el = e.target.closest('#controls [data-path]');
+  if (el && el.type === 'number') el.value = getPath(el.dataset.path);
+});
+// Имена на вкладках подвесов меняются без перерисовки пульта, чтобы поле не теряло фокус
+function refreshNames() {
+  document.querySelectorAll('#controls .tab[data-action="selHang"]').forEach(b => { b.textContent = state.hangs[+b.dataset.idx].name; });
+}
+
+const mirroredName = n => ({ 'Левый': 'Правый', 'Правый': 'Левый' })[n] || `${n} (зеркало)`;
+function unlinkHang(hg) {
+  const r = resolveHang(hg);
+  Object.assign(hg, { ...r, angles: [...r.angles], mirrorOf: null });
+}
+let undoState = null;
+document.addEventListener('click', e => {
+  const b = e.target.closest('#controls button');
+  if (!b) return;
+  const act = b.dataset.action;
+  if (b.dataset.step) {
+    const [path, d] = b.dataset.step.split(':');
+    setPath(path, Math.round((getPath(path) + parseFloat(d)) * 10) / 10);
+    syncInputs();
+    update();
+    return;
+  }
+  if (!act) return;
+  if (act === 'selHang') { state.sel = +b.dataset.idx; hideAuto(); }
+  else if (act === 'addHang') {
+    const r = resolveHang(state.hangs[state.sel]);
+    state.hangs.push({ ...r, angles: [...r.angles], id: newId('h'), name: `Подвес ${state.hangs.length + 1}`, mirrorOf: null, y: clamp(r.y - 3, -100, 100) });
+    state.sel = state.hangs.length - 1;
+  } else if (act === 'mirror') {
+    const hg = state.hangs[state.sel];
+    state.hangs.push({ id: newId('h'), name: mirroredName(hg.name), mirrorOf: hg.id });
+    state.sel = state.hangs.length - 1;
+  } else if (act === 'unlink') unlinkHang(state.hangs[state.sel]);
+  else if (act === 'delHang') {
+    const hg = state.hangs[state.sel];
+    state.hangs.filter(o => o.mirrorOf === hg.id).forEach(unlinkHang);
+    state.hangs.splice(state.sel, 1);
+    state.sel = clamp(state.sel, 0, state.hangs.length - 1);
+  } else if (act === 'addZone') {
+    const { L, W, H } = state.room;
+    state.zones.push(b.dataset.kind === 'balcony'
+      ? { id: newId('z'), name: 'Балкон', x1: Math.round(L * 0.65), x2: Math.max(1, L - 0.5), y1: -(W / 2 - 0.5), y2: W / 2 - 0.5, z: Math.min(H - 2, 6.2), rise: 2 }
+      : { id: newId('z'), name: 'Партер', x1: Math.min(5, L / 4), x2: Math.max(1, L - 2), y1: -(W / 2 - 1), y2: W / 2 - 1, z: 1.7, rise: 0 });
+  } else if (act === 'delZone') state.zones.splice(+b.dataset.idx, 1);
+  else if (act === 'zero') {
+    const src = sourceOf(state.hangs[state.sel]);
+    src.angles = src.angles.map(() => 0);
+  } else if (act === 'example') { state = EXAMPLE(); undoState = null; }
+  else if (act === 'auto') { runAuto(); return; }
+  else if (act === 'undo' && undoState) {
+    const src = state.hangs.find(o => o.id === undoState.id);
+    if (src) { src.tilt = undoState.tilt; src.angles = [...undoState.angles]; }
+    undoState = null;
+    hideAuto();
+    syncInputs();
+    update();
+    return;
+  }
+  renderControls();
+  update();
+});
+function hideAuto() { const r = document.getElementById('autoResult'); if (r) r.hidden = true; }
+
+function runAuto() {
+  const res = document.getElementById('autoResult'), note = document.getElementById('autoNote');
+  const src = sourceOf(state.hangs[state.sel]);
+  const before = V && V.sel.secL.length ? levelStats(V.sel.secL.map(p => p.L)).spread : null;
+  const geo = { room: state.room, zones: state.zones.map(normZone) };
+  const next = autoSplay(geo, src, state.autoTilt);
+  if (!next) {
+    note.textContent = 'В разрез этого подвеса не попала ни одна зона публики — подбирать не под что.';
+    res.hidden = false;
+    return;
+  }
+  undoState = { id: src.id, tilt: src.tilt, angles: [...src.angles] };
+  src.tilt = next.tilt;
+  src.angles = next.angles;
+  syncInputs();
+  update();
+  const after = levelStats(V.sel.secL.map(p => p.L)).spread;
+  note.textContent = before == null ? `Подобрано: разброс вдоль разреза ${fmt(after)} дБ.` : `Подобрано: разброс вдоль разреза ${fmt(after)} дБ, было ${fmt(before)} дБ.`;
+  res.hidden = false;
+}
+
+// ---------- перетаскивание подвесов на виде сверху ----------
+let drag = null;
+function toRoom(e) {
+  const svg = document.getElementById('topSvg');
+  if (!svg || !topMap) return null;
+  const r = svg.getBoundingClientRect(), vb = svg.viewBox.baseVal, k = vb.width / r.width;
+  const px = (e.clientX - r.left) * k, py = (e.clientY - r.top) * k;
+  return { X: topMap.xMin + (px - topMap.pad.l) / topMap.s, Y: topMap.yMax - (py - topMap.pad.t) / topMap.s };
+}
+function bindTopView() {
+  const box = document.getElementById('topView');
+  box.addEventListener('pointerdown', e => {
+    const g = e.target.closest('[data-hang]');
+    if (!g) return;
+    const i = +g.dataset.hang;
+    if (i !== state.sel) { state.sel = i; hideAuto(); renderControls(); update(); }
+    const p = toRoom(e), r = resolveHang(state.hangs[i]);
+    if (!p) return;
+    drag = { i, dx: r.x - p.X, dy: r.y - p.Y, id: e.pointerId };
+    box.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const p = toRoom(e);
+    if (!p) return;
+    const hg = state.hangs[drag.i], src = sourceOf(hg);
+    const x = clamp(Math.round((p.X + drag.dx) * 10) / 10, -30, 300), y = clamp(Math.round((p.Y + drag.dy) * 10) / 10, -100, 100);
+    src.x = x;
+    src.y = hg.mirrorOf ? -y : y;
+    scheduleUpdate();
+  });
+  const end = e => { if (drag && e.pointerId === drag.id) { drag = null; syncInputs(); } };
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+}
+let pending = false;
+function scheduleUpdate() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; syncInputs(); update(); });
+}
+
+// ---------- страница результатов ----------
 function renderResults() {
   document.getElementById('results').innerHTML = `
     <div class="chips" id="chips"></div>
     <section class="panel card">
-      <div class="head"><h2>Разрез зала</h2><span class="note" id="roomNote"></span></div>
-      <div class="view" id="roomView"></div>
+      <div class="head"><h2>Вид сверху</h2><span class="note">подвес можно тащить мышью · пунктир — разрез выбранного подвеса</span></div>
+      <div class="view" id="topView"></div>
+      <div class="legend" id="mapLegend"></div>
+    </section>
+    <section class="panel card">
+      <div class="head"><h2 id="secTitle">Разрез</h2><span class="note" id="secNote"></span></div>
+      <div class="view" id="secView"></div>
       <div class="legend">
         <span><i class="cov1"></i>публика в покрытии</span>
         <span><i class="cov2"></i>перекрытие 2+ колонок</span>
@@ -780,7 +1245,7 @@ function renderResults() {
       </div>
     </section>
     <section class="panel card">
-      <div class="head"><h2>Уровень по залу</h2><span class="note">приблизительно · 0 дБ — самое громкое место публики, пунктир — среднее</span></div>
+      <div class="head"><h2>Уровень вдоль разреза</h2><span class="note">все подвесы вместе · 0 дБ — самое громкое место публики</span></div>
       <div class="view" id="levelView"></div>
     </section>
     <div class="lower">
@@ -789,7 +1254,7 @@ function renderResults() {
         <div class="view" id="arrayView"></div>
       </section>
       <section class="panel card">
-        <div class="head"><h2>Колонки</h2><span class="note">угол 1-й колонки — к раме, остальных — к предыдущей</span></div>
+        <div class="head"><h2>Колонки</h2><span class="note" id="tableNote"></span></div>
         <div class="table-wrap">
           <table>
             <thead><tr>
@@ -800,39 +1265,42 @@ function renderResults() {
         </div>
       </section>
     </div>`;
+  bindTopView();
 }
 
-// Таблица: строки пересобираются только при смене количества колонок, иначе обновляются значения —
-// так выпадающий список угла не теряет фокус
 function renderTable() {
-  const m = MODELS[state.model], tb = document.getElementById('boxRows');
-  if (tb.dataset.n !== String(state.n) || tb.dataset.model !== state.model) {
-    tb.innerHTML = arr.boxes.map(b => {
+  const D = V.sel, h = D.h, m = MODELS[h.model], tb = document.getElementById('boxRows');
+  const key = `${h.id}|${h.model}|${h.n}|${!!h.mirrorOf}`;
+  if (tb.dataset.key !== key) {
+    tb.innerHTML = D.arr.boxes.map(b => {
       const list = b.i === 0 ? m.frameSplays : m.splays;
       return `<tr data-i="${b.i}">
-        <td><span class="swatch" style="background:${boxColor(b.i, state.n)}"></span>${b.i + 1}</td>
-        <td><select data-angle="${b.i}" aria-label="Угол колонки ${b.i + 1}">${list.map(v => `<option value="${v}">${fmtDeg(v)}</option>`).join('')}</select></td>
+        <td><span class="swatch" style="background:${boxColor(b.i, h.n)}"></span>${b.i + 1}</td>
+        <td><select data-angle="${b.i}" aria-label="Угол колонки ${b.i + 1}"${h.mirrorOf || list.length === 1 ? ' disabled' : ''}>${list.map(v => `<option value="${v}">${fmtDeg(v)}</option>`).join('')}</select></td>
         <td data-c="tilt"></td><td data-c="h"></td><td class="where" data-c="hit"></td><td data-c="dist"></td>
       </tr>`;
     }).join('');
-    tb.dataset.n = String(state.n);
-    tb.dataset.model = state.model;
+    tb.dataset.key = key;
   }
-  arr.boxes.forEach(b => {
+  D.arr.boxes.forEach(b => {
     const tr = tb.children[b.i];
     const sel = tr.querySelector('select');
-    if (document.activeElement !== sel) sel.value = String(state.angles[b.i]);
+    if (document.activeElement !== sel) sel.value = String(h.angles[b.i]);
     tr.querySelector('[data-c="tilt"]').textContent = fmtDeg(Math.round(b.phi * 10) / 10);
     tr.querySelector('[data-c="h"]').textContent = fmt(b.c.y, 2);
-    const d = describeHit(b, state);
+    const d = describeHit(b, D.sec);
     tr.querySelector('[data-c="hit"]').innerHTML = `<span class="tag ${d.cls}">${esc(d.text)}</span>`;
     tr.querySelector('[data-c="dist"]').textContent = b.hit ? fmt(b.hit.t) : '—';
   });
+  document.getElementById('tableNote').textContent = m.frameSplays.length === 1
+    ? `${h.name} · расстояния — от подвеса по оси`
+    : `${h.name} · угол 1-й колонки — к раме, остальных — к предыдущей`;
 }
 document.addEventListener('change', e => {
   const sel = e.target.closest('select[data-angle]');
   if (!sel) return;
-  state.angles[+sel.dataset.angle] = parseFloat(sel.value);
+  const src = sourceOf(state.hangs[state.sel]);
+  src.angles[+sel.dataset.angle] = parseFloat(sel.value);
   update();
 });
 
@@ -859,65 +1327,60 @@ document.addEventListener('click', e => {
   if (el) setHighlight(hlIndex === +el.dataset.i ? null : +el.dataset.i);
 });
 
-// Сводка над разрезом
 function renderChips() {
-  const m = MODELS[state.model], f = m.frame, cov = arr.cov;
+  const D = V.sel, h = D.h, m = MODELS[h.model], f = m.frame, cov = D.cov;
   const chip = (k, v, cls = '') => `<div class="chip ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
-  const rowChip = (title, s) => s && s.who.length
-    ? chip(title, `колонка ${s.who.map(i => i + 1).join(', ')}`, 'ok')
-    : chip(title, 'не покрыт', 'bad');
-  const weight = state.n * m.weight + f.weight;
+  const rowChip = (title, s) => s && s.who.length ? chip(title, `колонка ${s.who.map(i => i + 1).join(', ')}`, 'ok') : chip(title, 'не покрыт', 'bad');
+  const weight = h.n * m.weight + f.weight;
   const out = [];
+  if (V.mapStats) {
+    const sp = V.mapStats.spread;
+    out.push(chip('Разброс по всем зонам', `${fmt(sp)} дБ`, sp <= 6 ? 'ok' : sp <= 10 ? 'warn' : 'bad'));
+  }
   if (cov) {
     const pct = Math.round(cov.share * 100);
-    out.push(chip('Публика в покрытии', `${pct} %`, pct === 100 ? 'ok' : pct >= 90 ? 'warn' : 'bad'));
-    out.push(rowChip('Первый ряд', cov.first));
-    out.push(rowChip('Последний ряд', cov.last));
-    if (arr.ls) {
-      const sp = arr.ls.spread;
-      out.push(chip('Разброс уровня', `${fmt(sp)} дБ`, sp <= 6 ? 'ok' : sp <= 10 ? 'warn' : 'bad'));
-    }
+    out.push(chip(`Покрытие · ${esc(h.name)}`, `${pct} %`, pct === 100 ? 'ok' : pct >= 90 ? 'warn' : 'bad'));
+    out.push(rowChip('Ближний ряд', cov.first));
+    out.push(rowChip('Дальний ряд', cov.last));
   } else {
-    out.push(chip('Публика', 'проверь ряды', 'bad'));
+    out.push(chip(`Покрытие · ${esc(h.name)}`, 'нет зон в разрезе', 'bad'));
   }
-  out.push(chip('Низ массива', `${fmt(arr.bottomY, 2)} м`));
-  out.push(chip('Вес подвеса', `${fmt(weight, 1)} из ${f.maxLoad} кг`, weight <= f.maxLoad ? 'ok' : 'bad'));
-  out.push(chip('Колонок', `${state.n} из ${f.maxBoxes}`, state.n <= f.maxBoxes ? 'ok' : 'bad'));
+  out.push(chip('Низ массива', `${fmt(D.arr.bottomY, 2)} м`));
+  out.push(f.maxLoad
+    ? chip('Вес подвеса', `${fmt(weight, 1)} из ${f.maxLoad} кг`, weight <= f.maxLoad ? 'ok' : 'bad')
+    : chip('Вес подвеса', `${fmt(weight, 1)} кг`));
+  out.push(chip('Колонок', `${h.n} из ${f.maxBoxes}`, h.n <= f.maxBoxes ? 'ok' : 'bad'));
   document.getElementById('chips').innerHTML = out.join('');
 }
 
 function renderNotes() {
-  const m = MODELS[state.model];
   document.getElementById('notes').innerHTML = `
-    <p>Расчёт геометрический. Луч — ось колонки из центра передней грани, точка — где ось пересекает уровень ушей. Конус — паспортное раскрытие ${m.vDisp}° по вертикали (−6 дБ) одной колонки. В дальней зоне массив работает как одна линия, поэтому реальное покрытие на высоких частотах уже конусов.</p>
-    <p>Уровень по залу — оценка: колонки складываются по энергии без интерференции, затухание с расстоянием и паспортная диаграмма по вертикали. Он показывает разницу между местами, а не абсолютные децибелы. «Подобрать углы» ищет самый ровный уровень без дыр в покрытии: верхняя колонка смотрит на последний ряд, углы плавно растут книзу. Результат — хорошая отправная точка, финальную настройку делай по замеру.</p>
-    <p>Размеры и шарниры CAD 208 взяты с чертежа HK Audio, углы и нагрузки — из CADIS Manual 1.0. Рама нарисована схематично. Вес подвеса: колонки (${fmt(m.weight, 1)} кг) и рама (${fmt(m.frame.weight, 1)} кг), без лебёдок и кабеля. Больше ${m.frame.maxBoxes} колонок в подвесе — сертификат TÜV не действует. Безопасность подвеса проверяй по мануалу HK Audio.</p>
-    <p>Неофициальный калькулятор, с HK Audio не связан.</p>`;
+    <p>Расчёт геометрический. Луч — ось колонки из центра передней грани, точка — где ось упирается в публику, пол, стену или потолок. Конус — паспортное раскрытие колонки по вертикали (−6 дБ). Разрез строится по оси выбранного подвеса.</p>
+    <p>Уровень — оценка: колонки складываются по энергии без интерференции, затухание с расстоянием и паспортные диаграммы по вертикали и горизонтали. Он показывает разницу между местами, а не абсолютные децибелы. «Подобрать углы» ищет самый ровный уровень вдоль разреза без дыр в покрытии: верхняя колонка смотрит на дальний ряд, углы плавно растут книзу.</p>
+    <p>Данные колонок: ${Object.values(MODELS).map(m => `${esc(m.label)} — ${esc(m.source)}`).join('; ')}. Рама нарисована схематично. Вес подвеса — колонки и рама, без лебёдок и кабеля. Безопасность подвеса проверяй по документации производителя.</p>
+    <p>Неофициальный калькулятор, с HK Audio и L-Acoustics не связан.</p>`;
 }
 
-let arr = null;
 function drawViews() {
-  const rv = document.getElementById('roomView');
-  if (rv) rv.innerHTML = roomSVG(state, arr, Math.max(320, rv.clientWidth));
-  const lvv = document.getElementById('levelView');
-  if (lvv) lvv.innerHTML = levelSVG(state, arr, Math.max(320, lvv.clientWidth));
+  const tv = document.getElementById('topView');
+  tv.innerHTML = topSVG(state, V, Math.max(320, tv.clientWidth));
+  document.getElementById('mapLegend').innerHTML = V.map.L.length ? `<span class="lg-title">Уровень по зонам:</span>${mapLegend()}` : '';
+  const D = V.sel;
+  const sv = document.getElementById('secView');
+  sv.innerHTML = sectionSVG(state, D, Math.max(320, sv.clientWidth));
+  document.getElementById('secTitle').textContent = `Разрез по оси «${D.h.name}»`;
+  document.getElementById('secNote').textContent = `${D.h.n} × ${MODELS[D.h.model].short} · верх ${fmt(D.h.z)} м · рама ${fmtDeg(D.h.tilt)} · поворот ${fmtDeg(D.h.az)}`;
+  const lv = document.getElementById('levelView');
+  lv.innerHTML = levelSVG(state, D, Math.max(320, lv.clientWidth));
   const av = document.getElementById('arrayView');
-  if (av) av.innerHTML = arraySVG(state, arr, Math.max(260, av.clientWidth));
-  const note = document.getElementById('roomNote');
-  if (note) note.textContent = `${state.n} × CAD 208 · верх ${fmt(state.topH)} м · рама ${fmtDeg(state.frameTilt)}`;
+  av.innerHTML = arraySVG(D, Math.max(260, av.clientWidth));
   applyHighlight();
 }
 function update() {
-  arr = computeArray(state);
-  const surf = surfaces(state);
-  arr.boxes.forEach(b => { b.hit = aimPoint(b.c, b.phi, state, surf); });
-  arr.cov = coverage(state, arr);
-  arr.lv = levels(state, arr.boxes, audienceSamples(state));
-  arr.ls = arr.lv.length ? levelStats(arr.lv) : null;
+  V = derive();
   renderChips();
   drawViews();
   renderTable();
-  applyHighlight();
   saveState();
 }
 
@@ -925,7 +1388,7 @@ renderControls();
 renderResults();
 renderNotes();
 update();
-new ResizeObserver(() => drawViews()).observe(document.getElementById('results'));
+new ResizeObserver(() => { if (V) drawViews(); }).observe(document.getElementById('results'));
 </script>
 
 </html>
